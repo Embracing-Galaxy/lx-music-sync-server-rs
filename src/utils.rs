@@ -1,0 +1,206 @@
+use serde::{de::DeserializeOwned, Deserializer, Serialize, Serializer};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+pub fn ser_rwlock<T, S>(lock: &RwLock<T>, ser: S) -> Result<S::Ok, S::Error>
+where
+    T: Serialize,
+    S: Serializer,
+{
+    lock.blocking_read().serialize(ser)
+}
+
+pub fn de_rwlock<'de, T, D>(de: D) -> Result<RwLock<T>, D::Error>
+where
+    T: DeserializeOwned,
+    D: Deserializer<'de>,
+{
+    Ok(RwLock::new(T::deserialize(de)?))
+}
+
+pub fn load_or_create<'a, T: Default + DeserializeOwned + Serialize>(
+    path: &Path,
+) -> std::io::Result<T> {
+    if path.exists() {
+        let bytes = fs::read(path)?;
+        let val: T = serde_json::from_slice(&bytes)?;
+        Ok(val)
+    } else {
+        let val: T = T::default();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let bytes = serde_json::to_vec(&val)?;
+        fs::write(path, bytes)?;
+        Ok(val)
+    }
+}
+
+/// Remove illegal chars in Windows
+pub fn filter_file_name(name: &str) -> String {
+    const ILLEGAL: &[char] = &['\\', '/', ':', '*', '?', '#', '"', '<', '>', '|'];
+    name.chars().filter(|c| !ILLEGAL.contains(c)).collect()
+}
+
+type DirWalker = Vec<PathBuf>;
+
+pub fn walk_dir(dir: &Path) -> Result<DirWalker, std::io::Error> {
+    fs::read_dir(dir)?
+        .map(|res| res.map(|e| e.path()))
+        .collect()
+}
+
+pub fn async_write(path: &Path, data: &[u8]) {
+    async_scoped::TokioScope::scope_and_block(|scope| {
+        scope.spawn(tokio::fs::write(
+            path,
+            data,
+        ))
+    });
+}
+
+// ----------------------------------------------------------------------------------
+
+use std::collections::hash_map::Entry;
+use std::hash::Hash;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
+
+pub struct RwCounter<T: Eq + Hash> {
+    map: RwLock<HashMap<T, (usize, Instant)>>,
+}
+
+impl<T: Eq + Hash> RwCounter<T> {
+    const TTL: Duration = Duration::from_secs(60 * 60 * 24 * 2); // 2 days
+    pub(crate) fn new() -> Self {
+        Self {
+            map: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub(crate) async fn increase(&self, key: T) {
+        match self.map.write().await.entry(key) {
+            Entry::Occupied(mut e) => {
+                let (count, time) = e.get_mut();
+                *count += 1;
+                *time = Instant::now();
+            }
+            Entry::Vacant(e) => {
+                e.insert((1, Instant::now()));
+            }
+        }
+    }
+
+    pub(crate) async fn count(&self, key: &T) -> usize {
+        match self.map.read().await.get(key) {
+            Some((count, _)) => *count,
+            None => 0,
+        }
+    }
+
+    pub(crate) async fn cleanup(&self) {
+        let now = Instant::now();
+        let deadline = now - Self::TTL;
+        self.map
+            .write()
+            .await
+            .retain(|_, (_, last_used)| *last_used >= deadline);
+    }
+}
+
+// ----------------------------------------------------------------------------------
+
+use base64::prelude::{BASE64_STANDARD, Engine};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use std::collections::HashMap;
+use std::io::{Read, Write};
+
+pub fn gzip_base64(data: impl AsRef<[u8]>) -> String {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(data.as_ref()).unwrap();
+    let compressed = encoder.finish().unwrap();
+    BASE64_STANDARD.encode(compressed)
+}
+
+pub fn ungzip_base64(data: impl AsRef<[u8]>) -> Vec<u8> {
+    let compressed = BASE64_STANDARD.decode(data).expect("failed to decode base64");
+    let mut buffer = Vec::new();
+    GzDecoder::new(compressed.as_slice())
+        .read_to_end(&mut buffer)
+        .expect("failed to decompress");
+    buffer
+}
+
+pub mod crypto {
+    use base64::prelude::{BASE64_STANDARD, Engine};
+    use openssl::{
+        hash::{hash, MessageDigest},
+        rsa::{Padding, Rsa},
+        symm::{decrypt, encrypt, Cipher},
+    };
+    use rand::Rng;
+
+    pub type MD5 = [u8; 16];
+
+    pub fn to_md5(data: impl AsRef<[u8]>) -> MD5 {
+        let bytes: Vec<u8> = hash(MessageDigest::md5(), data.as_ref())
+            .unwrap()
+            .iter()
+            .copied()
+            .collect();
+        bytes.try_into().unwrap()
+    }
+
+    pub fn to_hex_str(data: MD5, length: usize) -> String {
+        data[..(length >> 1)]
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect()
+    }
+
+    pub fn rand_16bytes_as_base64() -> String {
+        let mut rng = rand::rng();
+        let mut buf = [0u8; 16];
+        rng.fill(&mut buf);
+        BASE64_STANDARD.encode(&buf)
+    }
+
+    pub fn aes_encrypt_with_base64(data: &str, key: &str) -> String {
+        // decode key with base64
+        let key_bytes = BASE64_STANDARD.decode(key).expect("Invalid base64 key");
+        debug_assert_eq!(key_bytes.len(), 16, "AES-128 key must be 16 bytes");
+
+        let cipher = Cipher::aes_128_ecb();
+        let ciphertext =
+            encrypt(cipher, &key_bytes, None, data.as_bytes()).expect("Encryption failed");
+
+        // encode with base64 and return
+        BASE64_STANDARD.encode(ciphertext)
+    }
+
+    pub fn aes_decrypt_with_base64(text: &str, key: &str) -> String {
+        // decode key and ciphertext with base64
+        let key_bytes = BASE64_STANDARD.decode(key).expect("Invalid base64 key");
+        let cipher_bytes = BASE64_STANDARD.decode(text).expect("Invalid base64 ciphertext");
+
+        let cipher = Cipher::aes_128_ecb();
+
+        // decrypt(No IV, ECB mode)
+        let plain = decrypt(cipher, &key_bytes, None, &cipher_bytes).expect("Decryption failed");
+        String::from_utf8(plain).expect("Invalid utf-8 plaintext")
+    }
+
+    pub fn rsa_encrypt_with_base64(data: &str, public_key: &str) -> String {
+        let public_key = Rsa::public_key_from_pem(public_key.as_bytes())
+            .expect("Failed to parse public key from PEM");
+
+        // encrypt with PKCS1_OAEP padding
+        let mut encrypted = vec![0; public_key.size() as usize];
+        let encrypted_len = public_key
+            .public_encrypt(data.as_bytes(), &mut encrypted, Padding::PKCS1_OAEP)
+            .expect("RSA encryption failed");
+
+        encrypted.truncate(encrypted_len);
+        BASE64_STANDARD.encode(encrypted)
+    }
+}
