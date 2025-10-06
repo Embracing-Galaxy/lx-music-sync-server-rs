@@ -3,7 +3,7 @@ use crate::data::user::UserSpace;
 use crate::data::{user::DeviceInfo, ClientId};
 use crate::server::SERVER_CONTEXT;
 use crate::utils::crypto::{
-    aes_decrypt_with_base64, aes_encrypt_with_base64, rsa_encrypt_with_base64, to_hex_str, to_md5,
+    aes_decrypt_with_base64, aes_encrypt_with_base64, rsa_encrypt_with_base64, md5_to_hex, to_md5,
 };
 use base64::prelude::{BASE64_STANDARD, Engine};
 
@@ -34,11 +34,10 @@ pub(crate) async fn auth_by_key(
     Ok(aes_encrypt_with_base64("Hello~::^-^::~v4~", key))
 }
 
-#[allow(unused_variables)]
 pub(crate) async fn auth_by_code(encrypt_msg: &str) -> Result<String, &'static str> {
     for (username, user_config) in CONFIG.user_configs.iter() {
         let data = &user_config.password;
-        let hex_key = to_hex_str(to_md5(data), 16);
+        let hex_key = md5_to_hex(&to_md5(data), 16);
         let key = BASE64_STANDARD.encode(hex_key.as_bytes());
         let text = aes_decrypt_with_base64(encrypt_msg, &key);
         if !text.starts_with(AUTH_HEAD) {

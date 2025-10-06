@@ -25,7 +25,7 @@ pub(crate) struct UserSpace {
 impl UserSpace {
     pub(crate) fn new(user_name: String) -> Self {
         let user_data = UserData::new(user_name);
-        let path = &user_data.dir;
+        let path = &user_data.user_path;
         Self {
             list: RwLock::new(ListDataManager::new(&path.join("list"))),
             dislike: RwLock::new(ListDataManager::new(&path.join("dislike"))),
@@ -81,7 +81,10 @@ impl UserSpace {
 
     /// Get the snapshot of the last sync of the given client
     pub(crate) async fn get_snapshot(&self, client_id: &ClientId) -> Option<ListData> {
-        self.list.read().await.get_snapshot(&client_id)
+        self.list
+            .read()
+            .await
+            .get_snapshot(&self.user_data.user_path, &client_id)
     }
 
     pub(crate) async fn get_current_list_info_key(&self) -> MD5 {
@@ -98,7 +101,7 @@ impl UserSpace {
 }
 
 struct UserData {
-    dir: Box<Path>,
+    user_path: Box<Path>,
     devices_file_path: Arc<Path>,
     devices_infos: Arc<DevicesInfos>,
 }
@@ -109,7 +112,7 @@ impl UserData {
         let devices_file_path = dir.join("devices.json");
         Self {
             devices_infos: Arc::new(DevicesInfos::load(&devices_file_path)),
-            dir: dir.into_boxed_path(),
+            user_path: dir.into_boxed_path(),
             devices_file_path: Arc::from(devices_file_path),
         }
     }

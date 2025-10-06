@@ -10,6 +10,7 @@ use crate::utils::{
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use crate::utils::crypto::md5_to_hex;
 
 type SnapshotKey = MD5;
 
@@ -25,21 +26,21 @@ impl ListDataManager {
         Self {
             current_list_data: match snapshot_info.latest {
                 None => ListData::default(),
-                Some(key) => Self::get_snapshot_from_key(&key).unwrap_or_default(),
+                Some(key) => Self::get_snapshot_from_key(user_path, &key).unwrap_or_default(),
             },
             snapshot_info,
         }
     }
 
     /// Get the snapshot of the last sync of the given client
-    pub(super) fn get_snapshot(&self, client_id: &ClientId) -> Option<ListData> {
+    pub(super) fn get_snapshot(&self, user_path: &Path, client_id: &ClientId) -> Option<ListData> {
         let key = self.snapshot_info.clients.get(client_id)?;
-        Self::get_snapshot_from_key(&key)
+        Self::get_snapshot_from_key(user_path, &key)
     }
 
-    #[allow(unreachable_code)]
-    fn get_snapshot_from_key(key: &SnapshotKey) -> Option<ListData> {
-        serde_json::from_slice(todo!("list/snapshot/snapshot_{:?}.json", key)).ok()
+    fn get_snapshot_from_key(snapshot_path: &Path, key: &SnapshotKey) -> Option<ListData> {
+        let bytes = std::fs::read(snapshot_path.join(md5_to_hex(key, 32))).ok()?;
+        serde_json::from_slice(&bytes).ok()
     }
 
     pub(super) fn get_info_key(&self) -> SnapshotKey {
@@ -58,7 +59,8 @@ impl ListDataManager {
     }
 
     pub(super) fn merge(
-        &mut self,client_id: &ClientId,
+        &mut self,
+        client_id: &ClientId,
         client: &ListData,
         snapshot: &ListData,
         add_location: &AddMusicLocation,
@@ -75,7 +77,6 @@ impl ListDataManager {
         self.current_list_data = data;
     }
 
-    #[allow(unreachable_code, unused_variables)]
     pub(super) fn update_snapshot_key(&mut self, client_id: &ClientId, key: SnapshotKey) {
         self.snapshot_info.update(client_id, key);
     }

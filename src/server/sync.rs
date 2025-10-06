@@ -1,9 +1,8 @@
 use crate::data::config::CONFIG;
 use crate::data::{list::ListData, user::UserSpace};
 use crate::server::{dto::EnabledFeatures, socket::SocketContext, SERVER_CONTEXT};
-use crate::utils::crypto::MD5;
+use crate::utils::crypto::{hex_to_md5, MD5};
 
-#[allow(unreachable_code, unused_variables)]
 pub(super) async fn sync_list_once(socket: &mut SocketContext, enabled_features: EnabledFeatures) {
     assert_eq!(enabled_features, EnabledFeatures::DEFAULT);
     let username = &socket.username;
@@ -54,14 +53,7 @@ async fn get_client_list_md5(socket: &mut SocketContext) -> MD5 {
     let receiver = socket.request("list_sync_get_md5", None).await.unwrap();
     let resp = receiver.await.unwrap();
     let hex_str = resp.get_data::<String>().unwrap();
-
-    debug_assert!(hex_str.len() == 32);
-    let bytes = (0..32)
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16))
-        .collect::<Result<Vec<_>, _>>()
-        .expect("hex decode error");
-    bytes.try_into().unwrap()
+    hex_to_md5(&hex_str)
 }
 
 async fn set_client_list(socket: &mut SocketContext, list_data: &Vec<u8>) {
@@ -72,11 +64,10 @@ async fn set_client_list(socket: &mut SocketContext, list_data: &Vec<u8>) {
         .unwrap();
 }
 
-#[allow(unreachable_code, unused_variables)]
 async fn list_latest(socket: &mut SocketContext, user_space: &UserSpace) -> bool {
     let client_md5 = get_client_list_md5(socket).await;
     let snapshot_key = user_space
-        .get_snapshot_key(unimplemented!("client id"))
+        .get_snapshot_key(&socket.client_id)
         .await;
     let current_key = user_space.get_current_list_info_key().await;
 

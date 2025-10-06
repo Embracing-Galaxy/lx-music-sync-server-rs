@@ -23,7 +23,6 @@ async fn server_id() -> HttpResponse {
     HttpResponse::Ok().body(format!("{}{}", SERVER_ID_PREFIX, SERVER_INFO.server_id))
 }
 
-#[allow(unreachable_code)]
 #[post("/au")]
 async fn auth_code(req: HttpRequest) -> HttpResponse {
     let Ok(ip) = SERVER_CONTEXT.get_ip(&req).await else {
@@ -114,6 +113,7 @@ async fn websocket(
                         text.as_bytes().to_vec()
                     };
                     socket_context.on_response_string(&*sync_data).await;
+                    todo!("handle req");
                 }
                 AggregatedMessage::Pong(_) => {
                     socket_context.got_pong();

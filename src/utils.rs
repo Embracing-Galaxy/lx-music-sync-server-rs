@@ -51,12 +51,7 @@ pub fn walk_dir(dir: &Path) -> Result<DirWalker, std::io::Error> {
 }
 
 pub fn async_write(path: &Path, data: &[u8]) {
-    async_scoped::TokioScope::scope_and_block(|scope| {
-        scope.spawn(tokio::fs::write(
-            path,
-            data,
-        ))
-    });
+    async_scoped::TokioScope::scope_and_block(|scope| scope.spawn(tokio::fs::write(path, data)));
 }
 
 // ----------------------------------------------------------------------------------
@@ -110,7 +105,7 @@ impl<T: Eq + Hash> RwCounter<T> {
 
 // ----------------------------------------------------------------------------------
 
-use base64::prelude::{BASE64_STANDARD, Engine};
+use base64::prelude::{Engine, BASE64_STANDARD};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -123,7 +118,9 @@ pub fn gzip_base64(data: impl AsRef<[u8]>) -> String {
 }
 
 pub fn ungzip_base64(data: impl AsRef<[u8]>) -> Vec<u8> {
-    let compressed = BASE64_STANDARD.decode(data).expect("failed to decode base64");
+    let compressed = BASE64_STANDARD
+        .decode(data)
+        .expect("failed to decode base64");
     let mut buffer = Vec::new();
     GzDecoder::new(compressed.as_slice())
         .read_to_end(&mut buffer)
@@ -132,7 +129,7 @@ pub fn ungzip_base64(data: impl AsRef<[u8]>) -> Vec<u8> {
 }
 
 pub mod crypto {
-    use base64::prelude::{BASE64_STANDARD, Engine};
+    use base64::prelude::{Engine, BASE64_STANDARD};
     use openssl::{
         hash::{hash, MessageDigest},
         rsa::{Padding, Rsa},
@@ -151,7 +148,18 @@ pub mod crypto {
         bytes.try_into().unwrap()
     }
 
-    pub fn to_hex_str(data: MD5, length: usize) -> String {
+    pub fn hex_to_md5(hex_str: &str) -> MD5 {
+        debug_assert_eq!(hex_str.len(), 32);
+        let bytes = (0..32)
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("hex decode error");
+        bytes.try_into().unwrap()
+    }
+
+    pub fn md5_to_hex(data: &MD5, length: usize) -> String {
+        debug_assert!(length <= 32);
         data[..(length >> 1)]
             .iter()
             .map(|b| format!("{:02x}", b))
@@ -181,7 +189,9 @@ pub mod crypto {
     pub fn aes_decrypt_with_base64(text: &str, key: &str) -> String {
         // decode key and ciphertext with base64
         let key_bytes = BASE64_STANDARD.decode(key).expect("Invalid base64 key");
-        let cipher_bytes = BASE64_STANDARD.decode(text).expect("Invalid base64 ciphertext");
+        let cipher_bytes = BASE64_STANDARD
+            .decode(text)
+            .expect("Invalid base64 ciphertext");
 
         let cipher = Cipher::aes_128_ecb();
 
