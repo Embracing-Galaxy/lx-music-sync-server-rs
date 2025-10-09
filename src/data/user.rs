@@ -69,10 +69,13 @@ impl UserSpace {
         snapshot: &ListData,
         add_location: &AddMusicLocation,
     ) -> Vec<u8> {
-        self.list
+        let merged_bytes = self
+            .list
             .write()
             .await
-            .merge(client_id, client, snapshot, add_location)
+            .merge(client_id, client, snapshot, add_location);
+        self.list.write().await.create_snapshot();
+        merged_bytes
     }
 
     pub(crate) async fn overwrite_list(&self, client_id: &ClientId, data: ListData) {
@@ -84,11 +87,11 @@ impl UserSpace {
         self.list
             .read()
             .await
-            .get_snapshot(&self.user_data.user_path, &client_id)
+            .get_snapshot(&client_id)
     }
 
     pub(crate) async fn get_current_list_info_key(&self) -> MD5 {
-        self.list.read().await.get_info_key()
+        self.list.write().await.get_info_key()
     }
 
     pub(crate) async fn get_snapshot_key(&self, client_id: &ClientId) -> Option<MD5> {

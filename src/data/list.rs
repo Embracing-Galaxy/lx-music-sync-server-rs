@@ -3,50 +3,56 @@ use crate::data::{
     music::{MusicInfo, MusicSource},
     ClientId,
 };
+use crate::utils::crypto::md5_to_hex;
 use crate::utils::{
+    async_write,
     crypto::{to_md5, MD5},
-    load_or_create,
+    load_or_create, now_ms,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use crate::utils::crypto::md5_to_hex;
 
 type SnapshotKey = MD5;
 
 pub(super) struct ListDataManager {
+    path: Box<Path>,
+    info_path: Box<Path>,
     snapshot_info: SnapshotInfo,
     current_list_data: ListData,
 }
 
 impl ListDataManager {
     pub(super) fn new(user_path: &Path) -> Self {
-        let path = user_path.join("list").join("snapshotInfo.json");
-        let snapshot_info: SnapshotInfo = load_or_create(&path).unwrap();
+        let path = user_path.join("list");
+        let info_path = path.join("snapshotInfo.json");
+        let snapshot_info: SnapshotInfo = load_or_create(&info_path).unwrap();
         Self {
-            current_list_data: match snapshot_info.latest {
+            current_list_data: match snapshot_info.latest_key {
                 None => ListData::default(),
-                Some(key) => Self::get_snapshot_from_key(user_path, &key).unwrap_or_default(),
+                Some(key) => Self::get_snapshot_from_key(&path, &key).unwrap_or_default(),
             },
+            path: path.into_boxed_path(),
+            info_path: info_path.into_boxed_path(),
             snapshot_info,
         }
     }
 
     /// Get the snapshot of the last sync of the given client
-    pub(super) fn get_snapshot(&self, user_path: &Path, client_id: &ClientId) -> Option<ListData> {
+    pub(super) fn get_snapshot(&self, client_id: &ClientId) -> Option<ListData> {
         let key = self.snapshot_info.clients.get(client_id)?;
-        Self::get_snapshot_from_key(user_path, &key)
+        Self::get_snapshot_from_key(&self.path, &key)
     }
 
-    fn get_snapshot_from_key(snapshot_path: &Path, key: &SnapshotKey) -> Option<ListData> {
-        let bytes = std::fs::read(snapshot_path.join(md5_to_hex(key, 32))).ok()?;
+    fn get_snapshot_from_key(user_path: &Path, key: &SnapshotKey) -> Option<ListData> {
+        let bytes = std::fs::read(user_path.join(md5_to_hex(key, 32))).ok()?;
         serde_json::from_slice(&bytes).ok()
     }
 
-    pub(super) fn get_info_key(&self) -> SnapshotKey {
-        match &self.snapshot_info.latest {
+    pub(super) fn get_info_key(&mut self) -> SnapshotKey {
+        match self.snapshot_info.latest_key {
             None => self.create_snapshot(),
-            Some(latest) => *latest,
+            Some(latest) => latest.clone(),
         }
     }
 
@@ -54,8 +60,31 @@ impl ListDataManager {
         self.snapshot_info.clients.get(client_id)
     }
 
-    fn create_snapshot(&self) -> SnapshotKey {
-        todo!("unimplemented")
+    pub(super) fn create_snapshot(&mut self) -> SnapshotKey {
+        let bytes = serde_json::to_vec(&self.current_list_data).unwrap();
+        let key = to_md5(&bytes);
+        let snapshot_info = &self.snapshot_info;
+        if let Some(latest_key) = snapshot_info.latest_key
+            && latest_key == key
+        {
+            return key;
+        }
+
+        if !self.snapshot_info.saved_keys.insert(key) {
+            async_write(
+                &self.path.join(md5_to_hex(&key, 32)),
+                &serde_json::to_vec(&self.current_list_data).unwrap(),
+            );
+        };
+
+        self.snapshot_info.time = now_ms();
+        self.snapshot_info.latest_key = Some(key);
+        async_write(
+            &self.info_path,
+            &serde_json::to_vec(&self.snapshot_info).unwrap(),
+        );
+
+        key
     }
 
     pub(super) fn merge(
@@ -84,14 +113,14 @@ impl ListDataManager {
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 struct SnapshotInfo {
-    latest: Option<SnapshotKey>,
-    time: usize,
-    list: Vec<String>,
+    latest_key: Option<SnapshotKey>,
+    time: u128,
+    saved_keys: HashSet<SnapshotKey>,
     clients: HashMap<ClientId, SnapshotKey>,
 }
 
 impl SnapshotInfo {
-    pub(super) fn update(&mut self, client_id: &ClientId, key: SnapshotKey) {
+    fn update(&mut self, client_id: &ClientId, key: SnapshotKey) {
         self.clients.insert(client_id.clone(), key);
     }
 }

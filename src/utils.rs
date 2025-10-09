@@ -1,6 +1,14 @@
 use serde::{de::DeserializeOwned, Deserializer, Serialize, Serializer};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+pub fn now_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+}
 
 pub fn ser_rwlock<T, S>(lock: &RwLock<T>, ser: S) -> Result<S::Ok, S::Error>
 where
