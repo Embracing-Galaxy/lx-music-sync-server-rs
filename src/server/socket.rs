@@ -22,10 +22,10 @@ static LOCK: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
 pub(crate) struct SocketContext {
     pub(super) session: Session,
     got_pong: Arc<AtomicBool>,
-    pub(super) list_ready: Arc<AtomicBool>,
+    list_ready: Arc<AtomicBool>,
     handlers: Arc<Mutex<HashMap<String, oneshot::Sender<Resp>>>>,
     pub(super) client_id: ClientId,
-    pub(super) username: String,
+    pub(crate) username: String,
 }
 
 impl SocketContext {

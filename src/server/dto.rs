@@ -1,6 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
-// TODO put fake socket in data
 #[derive(Deserialize, Serialize)]
 pub(super) struct Req {
     name: String,

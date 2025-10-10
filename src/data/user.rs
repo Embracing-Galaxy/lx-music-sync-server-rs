@@ -84,10 +84,7 @@ impl UserSpace {
 
     /// Get the snapshot of the last sync of the given client
     pub(crate) async fn get_snapshot(&self, client_id: &ClientId) -> Option<ListData> {
-        self.list
-            .read()
-            .await
-            .get_snapshot(&client_id)
+        self.list.read().await.get_snapshot(&client_id)
     }
 
     pub(crate) async fn get_current_list_info_key(&self) -> MD5 {
@@ -181,7 +178,7 @@ pub(crate) struct DeviceInfo {
     pub(crate) client_id: ClientId,
     pub(crate) key: String,
     #[serde(deserialize_with = "de_rwlock", serialize_with = "ser_rwlock")]
-    pub(crate) device_name: RwLock<String>,
+    device_name: RwLock<String>,
     pub(crate) is_mobile: bool,
     last_connect_date: Option<usize>,
 }
@@ -195,5 +192,9 @@ impl DeviceInfo {
             is_mobile,
             last_connect_date: Some(0),
         }
+    }
+    
+    pub(crate) async fn get_device_name(&self) -> String {
+        self.device_name.read().await.clone()
     }
 }
