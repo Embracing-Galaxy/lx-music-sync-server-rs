@@ -3,9 +3,10 @@ use crate::{
     data::{list::ListData, list::ListDataManager, ClientId},
     utils::{
         crypto::{rand_16bytes_as_base64, MD5},
-        de_rwlock, filter_file_name, ser_rwlock,
+        filter_file_name,
     },
 };
+use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -46,8 +47,11 @@ impl UserSpace {
     pub(crate) async fn update_device_name(&self, id: &ClientId, device_name: &str) {
         let clients = &self.user_data.devices_infos.clients.read().await;
         let device_info = clients.get(id).unwrap();
-        if *device_info.device_name.read().await != device_name {
-            *device_info.device_name.write().await = device_name.to_string();
+        if device_info.device_name.load().as_str() != device_name {
+            // assert only one socket would visit here
+            device_info
+                .device_name
+                .store(Arc::new(device_name.to_string()));
             self.user_data.write_devices_infos();
         }
     }
@@ -177,8 +181,7 @@ struct Helper {
 pub(crate) struct DeviceInfo {
     pub(crate) client_id: ClientId,
     pub(crate) key: String,
-    #[serde(deserialize_with = "de_rwlock", serialize_with = "ser_rwlock")]
-    device_name: RwLock<String>,
+    device_name: ArcSwap<String>,
     pub(crate) is_mobile: bool,
     last_connect_date: Option<usize>,
 }
@@ -188,13 +191,13 @@ impl DeviceInfo {
         Self {
             client_id: rand_16bytes_as_base64(),
             key: rand_16bytes_as_base64(),
-            device_name: RwLock::new(device_name),
+            device_name: ArcSwap::from_pointee(device_name),
             is_mobile,
             last_connect_date: Some(0),
         }
     }
-    
-    pub(crate) async fn get_device_name(&self) -> String {
-        self.device_name.read().await.clone()
+
+    pub(crate) fn get_device_name(&self) -> Arc<String> {
+        self.device_name.load().clone()
     }
 }

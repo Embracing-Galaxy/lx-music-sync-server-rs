@@ -80,7 +80,7 @@ async fn websocket(
     let Some(device_info) = user_space.get_client_device_info(client_id).await else {
         return Ok(HttpResponse::BadRequest().body("missing ?i=clientId"));
     };
-    let device_name = device_info.get_device_name().await;
+    let device_name = device_info.get_device_name();
 
     let (res, session, stream) = actix_ws::handle(&req, stream)?;
     // If it already exists in the pool, kick out the old socket
