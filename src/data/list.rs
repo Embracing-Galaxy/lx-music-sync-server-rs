@@ -9,7 +9,7 @@ use crate::utils::{
     crypto::{to_md5, MD5},
     load_or_create, now_ms,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -137,7 +137,7 @@ impl ListData {
         self.default.is_empty() && self.love.is_empty() && self.custom_lists.is_empty()
     }
 
-    fn build_custom_map(&self) -> HashMap<u32, &CustomList> {
+    fn build_custom_map(&self) -> HashMap<u64, &CustomList> {
         self.custom_lists
             .iter()
             .map(|list| (list.id, list))
@@ -150,7 +150,7 @@ impl ListData {
         let current_custom_map = self.build_custom_map();
         let client_custom_map = client.build_custom_map();
         let snapshot_custom_map = snapshot.build_custom_map();
-        let deleted_ids: HashSet<u32> = snapshot
+        let deleted_ids: HashSet<u64> = snapshot
             .custom_lists
             .iter()
             .map(|list| list.id)
@@ -223,12 +223,20 @@ impl ListData {
 
 #[derive(Clone, Deserialize, Serialize)]
 struct CustomList {
-    id: u32,
+    #[serde(deserialize_with = "deserialize_list_id")]
+    id: u64,
     name: String,
-    source: Option<MusicSource>,
-    source_list_id: String,
-    location_update_time: Option<usize>,
+    source: Option<MusicSource>, // TODO Usually None, its role is not yet clear
+    source_list_id: Option<String>,
+    location_update_time: Option<u128>,
     list: Vec<MusicInfo>,
+}
+
+/// deserialize "userlist_<some number>" to u64
+fn deserialize_list_id<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error> {
+    let raw_str = <&str>::deserialize(de)?;
+    const PREFIX_LEN: usize = "userlist_".len();
+    raw_str[PREFIX_LEN..].parse().map_err(serde::de::Error::custom)
 }
 
 impl CustomList {
