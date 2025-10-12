@@ -13,6 +13,7 @@ pub(crate) static SERVER_INFO: LazyLock<ServerInfo> =
     LazyLock::new(|| load_or_create(Path::new("server_info.json")));
 
 pub(crate) type ClientId = String;
+pub(crate) type Username = &'static str;
 
 #[derive(Serialize, Deserialize)]
 pub(crate) struct ServerInfo {

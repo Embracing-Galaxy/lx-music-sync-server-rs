@@ -1,3 +1,5 @@
+use crate::data::Username;
+use crate::server::SERVER_CONTEXT;
 use crate::utils::load_or_create;
 use crate::{
     data::config::AddMusicLocation,
@@ -24,7 +26,11 @@ pub(crate) struct UserSpace {
 }
 
 impl UserSpace {
-    pub(crate) fn new(user_name: String, devices_infos: DevicesInfos, devices_file_path: Arc<Path>) -> Self {
+    pub(crate) fn new(
+        user_name: Username,
+        devices_infos: DevicesInfos,
+        devices_file_path: Arc<Path>,
+    ) -> Self {
         let user_data = UserData::new(user_name, devices_infos, devices_file_path);
         let path = &user_data.user_path;
         Self {
@@ -51,6 +57,8 @@ impl UserSpace {
     }
 
     pub(crate) fn insert_device_info(&self, device_info: DeviceInfo) {
+        SERVER_CONTEXT
+            .update_device_username_map(device_info.client_id.clone(), self.user_data.username);
         self.user_data.devices_infos.insert_device(device_info);
         self.user_data.write_devices_infos();
     }
@@ -94,15 +102,21 @@ impl UserSpace {
 }
 
 struct UserData {
+    username: Username,
     user_path: Box<Path>,
     devices_file_path: Arc<Path>,
     devices_infos: Arc<DevicesInfos>,
 }
 
 impl UserData {
-    pub(crate) fn new(username: String, device_infos: DevicesInfos, devices_file_path: Arc<Path>) -> Self {
-        let dir = USERS_PATH.join(filter_file_name(&username));
+    pub(crate) fn new(
+        username: Username,
+        device_infos: DevicesInfos,
+        devices_file_path: Arc<Path>,
+    ) -> Self {
+        let dir = USERS_PATH.join(filter_file_name(username));
         Self {
+            username,
             devices_infos: Arc::new(device_infos),
             user_path: dir.into_boxed_path(),
             devices_file_path,
@@ -133,7 +147,7 @@ impl DevicesInfos {
             clients: ArcSwap::from_pointee(
                 deserialized
                     .into_iter()
-                    .map(|info| ((**info.device_name.load()).clone(), Arc::new(info)))
+                    .map(|info| (info.client_id.clone(), Arc::new(info)))
                     .collect(),
             ),
         }
@@ -141,8 +155,8 @@ impl DevicesInfos {
 
     pub(crate) fn register_each_device(
         &self,
-        device_user_map: &mut HashMap<ClientId, &'static str>,
-        username: &'static str,
+        device_user_map: &mut HashMap<ClientId, Username>,
+        username: Username,
     ) {
         for client_id in self.clients.load().keys() {
             device_user_map.insert(client_id.clone(), username);
@@ -163,7 +177,7 @@ impl DevicesInfos {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct DeviceInfo {
     pub(crate) client_id: ClientId,
     pub(crate) key: String,

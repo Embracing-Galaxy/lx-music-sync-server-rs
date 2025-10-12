@@ -1,11 +1,13 @@
 use crate::data::config::CONFIG;
 use crate::data::user::{DevicesInfos, UserSpace};
-use crate::data::ClientId;
+use crate::data::{ClientId, Username};
 use crate::utils::RwCounter;
 use axum::http::HeaderMap;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::{collections::HashMap, sync::LazyLock, time::Duration};
+use std::sync::Arc;
+use arc_swap::ArcSwap;
 use tokio::time::interval;
 
 mod dto;
@@ -16,8 +18,8 @@ pub(crate) static SERVER_CONTEXT: LazyLock<ServerContext> = LazyLock::new(|| Ser
 
 pub(crate) struct ServerContext {
     auth_failed_ips: RwCounter<String>,
-    device_user_map: HashMap<ClientId, &'static str>,
-    user_space_map: HashMap<&'static str, UserSpace>,
+    device_username_map: ArcSwap<HashMap<ClientId, Username>>,
+    user_space_map: HashMap<Username, UserSpace>,
 }
 
 pub(crate) struct BlockedIPError;
@@ -32,14 +34,20 @@ impl ServerContext {
             infos.register_each_device(&mut device_user_map, &username);
             user_space_map.insert(
                 username.as_str(),
-                UserSpace::new(username.clone(), infos, path.into()),
+                UserSpace::new(username, infos, path.into()),
             );
         }
         Self {
             auth_failed_ips: RwCounter::new(),
-            device_user_map,
+            device_username_map: ArcSwap::from_pointee(device_user_map),
             user_space_map,
         }
+    }
+
+    pub(crate) fn update_device_username_map(&self, client_id: ClientId, username: Username) {
+        let mut new_map = (**self.device_username_map.load()).clone();
+        new_map.insert(client_id, username);
+        self.device_username_map.store(Arc::new(new_map));
     }
 
     pub(crate) async fn get_ip(
@@ -63,8 +71,8 @@ impl ServerContext {
     }
 
     /// get the corresponding username
-    pub(crate) fn get_username(&self, client_id: &ClientId) -> Option<&&str> {
-        self.device_user_map.get(client_id)
+    pub(crate) fn get_username(&self, client_id: &ClientId) -> Option<&str> {
+        self.device_username_map.load().get(client_id).cloned()
     }
 
     pub(crate) fn get_user_space(&self, user_name: &str) -> Option<&UserSpace> {
@@ -73,7 +81,7 @@ impl ServerContext {
 
     pub(crate) fn get_client_user_space(&self, client_id: &ClientId) -> Option<&UserSpace> {
         self.user_space_map
-            .get(self.device_user_map.get(client_id)?)
+            .get(self.device_username_map.load().get(client_id)?)
     }
 
     pub(crate) async fn record_auth_failed_ip(&self, ip: &String) {

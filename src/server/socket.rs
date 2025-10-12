@@ -19,6 +19,7 @@ use std::sync::{
 use std::time::Duration;
 use tokio::sync::{oneshot, Semaphore};
 use tokio::time::interval;
+use crate::data::Username;
 
 static LOCK: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
 
@@ -27,11 +28,11 @@ pub(crate) struct SocketContext {
     handlers: Arc<DashMap<String, oneshot::Sender<Resp>>>,
     pub(super) client_id: ClientId,
     is_mobile: bool,
-    pub(crate) username: &'static str,
+    pub(crate) username: Username,
 }
 
 impl SocketContext {
-    pub(crate) fn new(socket: WebSocket, device_info: &DeviceInfo, username: &'static str) -> Self {
+    pub(crate) fn new(socket: WebSocket, device_info: &DeviceInfo, username: Username) -> Self {
         Self {
             socket,
             handlers: Default::default(),
@@ -119,7 +120,7 @@ impl std::fmt::Debug for SocketContext {
 
 pub(crate) async fn handle_socket(
     socket: WebSocket,
-    username: &'static str,
+    username: Username,
     device_info: Arc<DeviceInfo>,
     connections: ConnectionMap,
 ) {
@@ -131,7 +132,7 @@ pub(crate) async fn handle_socket(
     }
 
     let device_name = device_info.get_device_name();
-    info!("User ${username} on device ${device_name} connected");
+    info!("User {username} on device {device_name} connected");
 
     let socket_context: SocketContext = SocketContext::new(socket, &device_info, username);
     tokio::select! {
@@ -153,7 +154,7 @@ async fn handle_websocket_messages(mut context: SocketContext, device_name: &str
         tokio::select! {
             _ = pong_timeout.tick() => {
                 if !got_pong.swap(false, Ordering::Relaxed) {
-                    warn!("Closing connection of device ${device_name}: Client didn't pong within 30s.");
+                    warn!("Closing connection of device {device_name}: Client didn't pong within 30s.");
                     break;
                 }
                 context.ping().await;
@@ -174,7 +175,7 @@ async fn handle_websocket_messages(mut context: SocketContext, device_name: &str
                         got_pong.store(true, Ordering::Relaxed);
                     }
                     Message::Close(reason) => {
-                        info!("Closing connection of device ${device_name}, for reason: {:?}", reason);
+                        info!("Closing connection of device {device_name}, for reason: {:?}", reason);
                         break;
                     }
                     _ => warn!("Unsupported message: {:?}", msg),
