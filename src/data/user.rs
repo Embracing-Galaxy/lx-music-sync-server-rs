@@ -24,8 +24,8 @@ pub(crate) struct UserSpace {
 }
 
 impl UserSpace {
-    pub(crate) fn new(user_name: String) -> Self {
-        let user_data = UserData::new(user_name);
+    pub(crate) fn new(user_name: String, devices_infos: DevicesInfos, devices_file_path: Arc<Path>) -> Self {
+        let user_data = UserData::new(user_name, devices_infos, devices_file_path);
         let path = &user_data.user_path;
         Self {
             list: RwLock::new(ListDataManager::new(&path.join("list"))),
@@ -100,13 +100,12 @@ struct UserData {
 }
 
 impl UserData {
-    fn new(username: String) -> Self {
+    pub(crate) fn new(username: String, device_infos: DevicesInfos, devices_file_path: Arc<Path>) -> Self {
         let dir = USERS_PATH.join(filter_file_name(&username));
-        let devices_file_path = dir.join("devices.json");
         Self {
-            devices_infos: Arc::new(DevicesInfos::load(&devices_file_path)),
+            devices_infos: Arc::new(device_infos),
             user_path: dir.into_boxed_path(),
-            devices_file_path: Arc::from(devices_file_path),
+            devices_file_path,
         }
     }
 
@@ -128,18 +127,13 @@ pub(crate) struct DevicesInfos {
 
 impl DevicesInfos {
     pub(crate) fn load(path: impl AsRef<Path>) -> Self {
-        #[derive(Default, Deserialize, Serialize)]
-        struct Helper {
-            clients: HashMap<ClientId, DeviceInfo>,
-        }
-        let deserialized: Helper = load_or_create(path.as_ref());
+        let deserialized: Vec<DeviceInfo> = load_or_create(path.as_ref());
 
         Self {
             clients: ArcSwap::from_pointee(
                 deserialized
-                    .clients
                     .into_iter()
-                    .map(|(k, v)| (k, Arc::new(v)))
+                    .map(|info| ((**info.device_name.load()).clone(), Arc::new(info)))
                     .collect(),
             ),
         }

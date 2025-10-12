@@ -36,7 +36,6 @@ pub(super) async fn sync_list_once(socket: &mut SocketContext, enabled_features:
 /// after manual sync is completed
 async fn finished_sync(socket: &mut SocketContext) {
     socket.request("list_sync_finished", None).await.unwrap();
-    socket.list_ready();
 }
 
 async fn get_client_list_data(socket: &mut SocketContext) -> ListData {

@@ -37,25 +37,24 @@ pub fn async_write(path: &Path, data: &[u8]) {
 
 // ----------------------------------------------------------------------------------
 
-use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use dashmap::{DashMap, Entry};
 
 pub struct RwCounter<T: Eq + Hash> {
-    map: RwLock<HashMap<T, (usize, Instant)>>,
+    map: DashMap<T, (usize, Instant)>,
 }
 
 impl<T: Eq + Hash> RwCounter<T> {
     const TTL: Duration = Duration::from_secs(60 * 60 * 24 * 2); // 2 days
     pub(crate) fn new() -> Self {
         Self {
-            map: RwLock::new(HashMap::new()),
+            map: DashMap::new(),
         }
     }
 
     pub(crate) async fn increase(&self, key: T) {
-        match self.map.write().await.entry(key) {
+        match self.map.entry(key) {
             Entry::Occupied(mut e) => {
                 let (count, time) = e.get_mut();
                 *count += 1;
@@ -68,8 +67,8 @@ impl<T: Eq + Hash> RwCounter<T> {
     }
 
     pub(crate) async fn count(&self, key: &T) -> usize {
-        match self.map.read().await.get(key) {
-            Some((count, _)) => *count,
+        match self.map.get(key) {
+            Some(entry) => entry.0,
             None => 0,
         }
     }
@@ -81,8 +80,6 @@ impl<T: Eq + Hash> RwCounter<T> {
             return; // The program did not run long enough
         };
         self.map
-            .write()
-            .await
             .retain(|_, (_, last_used)| *last_used >= deadline);
     }
 }
@@ -91,7 +88,6 @@ impl<T: Eq + Hash> RwCounter<T> {
 
 use base64::prelude::{Engine, BASE64_STANDARD};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
-use std::collections::HashMap;
 use std::io::{Read, Write};
 
 pub fn gzip_base64(data: impl AsRef<[u8]>) -> String {

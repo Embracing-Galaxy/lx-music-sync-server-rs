@@ -1,12 +1,12 @@
 use crate::data::config::CONFIG;
-use crate::data::user::{DeviceInfo, DevicesInfos, UserSpace};
+use crate::data::user::{DevicesInfos, UserSpace};
 use crate::data::ClientId;
 use crate::utils::RwCounter;
-use actix_ws::Session;
-use socket::SocketContext;
+use axum::http::HeaderMap;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::{collections::HashMap, sync::LazyLock, time::Duration};
-use tokio::{sync::RwLock, time::interval};
+use tokio::time::interval;
 
 mod dto;
 pub(crate) mod socket;
@@ -15,7 +15,6 @@ pub(crate) mod sync;
 pub(crate) static SERVER_CONTEXT: LazyLock<ServerContext> = LazyLock::new(|| ServerContext::new());
 
 pub(crate) struct ServerContext {
-    sockets: RwLock<HashMap<ClientId, SocketContext>>,
     auth_failed_ips: RwCounter<String>,
     device_user_map: HashMap<ClientId, &'static str>,
     user_space_map: HashMap<&'static str, UserSpace>,
@@ -28,12 +27,15 @@ impl ServerContext {
         let mut device_user_map = HashMap::new();
         let mut user_space_map = HashMap::new();
         for username in CONFIG.user_configs.keys() {
-            let info = DevicesInfos::load(Path::new(username).join("devices.json"));
-            info.register_each_device(&mut device_user_map, &username);
-            user_space_map.insert(username.as_str(), UserSpace::new(username.clone()));
+            let path = Path::new(username).join("devices.json");
+            let infos = DevicesInfos::load(&path);
+            infos.register_each_device(&mut device_user_map, &username);
+            user_space_map.insert(
+                username.as_str(),
+                UserSpace::new(username.clone(), infos, path.into()),
+            );
         }
         Self {
-            sockets: Default::default(),
             auth_failed_ips: RwCounter::new(),
             device_user_map,
             user_space_map,
@@ -42,21 +44,18 @@ impl ServerContext {
 
     pub(crate) async fn get_ip(
         &self,
-        req: &actix_web::HttpRequest,
+        headers: &HeaderMap,
+        addr: SocketAddr,
     ) -> Result<String, BlockedIPError> {
         let ip = if CONFIG.enable_proxy
-            && let Some(real_ip) = req.headers().get("x-real-ip")
+            && let Some(real_ip) = headers.get("x-real-ip")
         {
-            Some(real_ip.to_str().unwrap().to_string())
-        } else if let Some(addr) = req.peer_addr() {
-            Some(addr.ip().to_string())
+            real_ip.to_str().unwrap().to_string()
         } else {
-            None
+            addr.ip().to_string()
         };
 
-        if let Some(ip) = ip
-            && self.auth_failed_ips.count(&ip).await < 20
-        {
+        if self.auth_failed_ips.count(&ip).await < 20 {
             Ok(ip)
         } else {
             Err(BlockedIPError)
@@ -77,36 +76,12 @@ impl ServerContext {
             .get(self.device_user_map.get(client_id)?)
     }
 
-    /// Would close old socket
-    pub(crate) async fn register_socket<'a>(
-        &self,
-        session: &Session,
-        device_info: &DeviceInfo,
-    ) -> SocketContext {
-        // TODO too much clone here
-        let client_id = device_info.client_id.clone();
-        let username = *self.device_user_map.get(&client_id).unwrap(); // already checked
-        let socket_context = SocketContext::new(session.clone(), client_id.clone(), username);
-        if let Some(old) = self
-            .sockets
-            .write()
-            .await
-            .insert(client_id, socket_context.clone())
-        {
-            old.session
-                .close(Some(actix_ws::CloseCode::Normal.into()))
-                .await
-                .unwrap();
-        }
-        socket_context
-    }
-
     pub(crate) async fn record_auth_failed_ip(&self, ip: &String) {
         self.auth_failed_ips.increase(ip.clone()).await;
     }
 
     pub(crate) fn start_daemon(&'static self) {
-        actix_web::rt::spawn(async move {
+        tokio::spawn(async move {
             let mut clean_expired_ip_record = interval(Duration::from_secs(3600));
             loop {
                 clean_expired_ip_record.tick().await;
