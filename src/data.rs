@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 
 pub(crate) const SERVER_ID_PREFIX: &str = "OjppZDo6";
 pub(crate) static SERVER_INFO: LazyLock<ServerInfo> =
-    LazyLock::new(|| load_or_create(Path::new("server_info.json")).unwrap());
+    LazyLock::new(|| load_or_create(Path::new("server_info.json")));
 
 pub(crate) type ClientId = String;
 

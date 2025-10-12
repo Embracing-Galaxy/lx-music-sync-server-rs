@@ -1,6 +1,6 @@
-use serde::{de::DeserializeOwned, Deserializer, Serialize, Serializer};
+use serde::{de::DeserializeOwned, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn now_ms() -> u128 {
@@ -10,37 +10,18 @@ pub fn now_ms() -> u128 {
         .as_millis()
 }
 
-pub fn ser_rwlock<T, S>(lock: &RwLock<T>, ser: S) -> Result<S::Ok, S::Error>
-where
-    T: Serialize,
-    S: Serializer,
-{
-    lock.blocking_read().serialize(ser)
-}
-
-pub fn de_rwlock<'de, T, D>(de: D) -> Result<RwLock<T>, D::Error>
-where
-    T: DeserializeOwned,
-    D: Deserializer<'de>,
-{
-    Ok(RwLock::new(T::deserialize(de)?))
-}
-
-pub fn load_or_create<'a, T: Default + DeserializeOwned + Serialize>(
-    path: &Path,
-) -> std::io::Result<T> {
+pub fn load_or_create<'a, T: Default + DeserializeOwned + Serialize>(path: &Path) -> T {
     if path.exists() {
-        let bytes = fs::read(path)?;
-        let val: T = serde_json::from_slice(&bytes)?;
-        Ok(val)
+        let bytes = fs::read(path).expect(format!("Failed to read {:?}", path).as_str());
+        serde_json::from_slice(&bytes).expect(format!("Failed to deserialize {:?}", path).as_str())
     } else {
-        let val: T = T::default();
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+            fs::create_dir_all(parent).expect(format!("Failed to create {:?}", parent).as_str());
         }
-        let bytes = serde_json::to_vec(&val)?;
-        fs::write(path, bytes)?;
-        Ok(val)
+        let default: T = T::default();
+        let bytes = serde_json::to_vec_pretty(&default).expect("Failed to serialize default value");
+        fs::write(path, bytes).expect("Failed to write default value to file");
+        default
     }
 }
 
@@ -48,14 +29,6 @@ pub fn load_or_create<'a, T: Default + DeserializeOwned + Serialize>(
 pub fn filter_file_name(name: &str) -> String {
     const ILLEGAL: &[char] = &['\\', '/', ':', '*', '?', '#', '"', '<', '>', '|'];
     name.chars().filter(|c| !ILLEGAL.contains(c)).collect()
-}
-
-type DirWalker = Vec<PathBuf>;
-
-pub fn walk_dir(dir: &Path) -> Result<DirWalker, std::io::Error> {
-    fs::read_dir(dir)?
-        .map(|res| res.map(|e| e.path()))
-        .collect()
 }
 
 pub fn async_write(path: &Path, data: &[u8]) {
@@ -103,7 +76,10 @@ impl<T: Eq + Hash> RwCounter<T> {
 
     pub(crate) async fn cleanup(&self) {
         let now = Instant::now();
-        let deadline = now - Self::TTL;
+        let Some(deadline) = now.checked_sub(Self::TTL) else {
+            // TODO "Make `last_used` persistent"
+            return; // The program did not run long enough
+        };
         self.map
             .write()
             .await

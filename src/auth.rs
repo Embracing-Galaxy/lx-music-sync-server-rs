@@ -37,8 +37,7 @@ pub(crate) async fn auth_by_key(
 
 pub(crate) async fn auth_by_code(encrypt_msg: &str) -> Result<String, &'static str> {
     for (username, user_config) in CONFIG.user_configs.iter() {
-        let data = &user_config.password;
-        let hex_key = md5_to_hex(&to_md5(data), 16);
+        let hex_key = md5_to_hex(&to_md5(&user_config.password), 16);
         let key = BASE64_STANDARD.encode(hex_key.as_bytes());
         let text = aes_decrypt_with_base64(encrypt_msg, &key);
         if !text.starts_with(AUTH_HEAD) {

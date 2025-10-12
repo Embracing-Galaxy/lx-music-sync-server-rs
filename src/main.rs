@@ -1,9 +1,9 @@
 use crate::auth::{auth_by_code, auth_by_key};
 use crate::data::{SERVER_ID_PREFIX, SERVER_INFO};
 use crate::utils::ungzip_base64;
-use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use actix_ws::{AggregatedMessage, CloseCode};
-use log::{info, warn};
+use log::{debug, info, warn};
 use serde::Deserialize;
 use server::SERVER_CONTEXT;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,7 +25,7 @@ async fn server_id() -> HttpResponse {
     HttpResponse::Ok().body(format!("{}{}", SERVER_ID_PREFIX, SERVER_INFO.server_id))
 }
 
-#[post("/au")]
+#[get("/ah")]
 async fn auth_code(req: HttpRequest) -> HttpResponse {
     let Ok(ip) = SERVER_CONTEXT.get_ip(&req).await else {
         return HttpResponse::Forbidden().body("Blocked IP");
@@ -116,12 +116,17 @@ async fn websocket(
         while let Some(Ok(msg)) = stream.recv().await {
             match msg {
                 AggregatedMessage::Text(text) => {
-                    let sync_data = if text[..3].eq("cg_") {
+                    let data = if text[..3].eq("cg_") {
                         ungzip_base64(&text[3..])
                     } else {
                         text.as_bytes().to_vec()
                     };
-                    socket_context.on_response_string(&sync_data).await;
+                    debug!(
+                        "{:?} get data:{}",
+                        socket_context,
+                        String::from_utf8_lossy(&data)
+                    );
+                    socket_context.on_response_string(&data).await;
                     todo!("handle req");
                 }
                 AggregatedMessage::Pong(_) => {
@@ -150,8 +155,6 @@ async fn main() -> std::io::Result<()> {
     };
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
     SERVER_CONTEXT.start_daemon();
-    let port = 9527;
-    info!("Listening on ${port}");
 
     HttpServer::new(|| {
         App::new()
@@ -162,7 +165,7 @@ async fn main() -> std::io::Result<()> {
             .service(websocket)
             .default_service(web::to(|| HttpResponse::Unauthorized()))
     })
-    .bind(("127.0.0.1", port))?
+    .bind(("127.0.0.1", 9527))?
     .run()
     .await
 }

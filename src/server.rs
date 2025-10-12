@@ -1,9 +1,10 @@
 use crate::data::config::CONFIG;
-use crate::data::user::{DeviceInfo, DevicesInfos, UserSpace, USERS_PATH};
+use crate::data::user::{DeviceInfo, DevicesInfos, UserSpace};
 use crate::data::ClientId;
-use crate::utils::{filter_file_name, walk_dir, RwCounter};
+use crate::utils::RwCounter;
 use actix_ws::Session;
 use socket::SocketContext;
+use std::path::Path;
 use std::{collections::HashMap, sync::LazyLock, time::Duration};
 use tokio::{sync::RwLock, time::interval};
 
@@ -26,17 +27,13 @@ impl ServerContext {
     fn new() -> Self {
         let mut device_user_map = HashMap::new();
         let mut user_space_map = HashMap::new();
-        for path in walk_dir(&USERS_PATH).unwrap().iter() {
+        for username in CONFIG.user_configs.keys() {
+            let path = Path::new(username);
             let info = DevicesInfos::load(path.join("devices.json"));
-            let username = &info.username;
-            debug_assert_eq!(
-                filter_file_name(username),
-                path.parent().unwrap().to_str().unwrap()
-            );
             async_scoped::TokioScope::scope_and_block(|scope| {
                 scope.spawn(info.register_each_device(&mut device_user_map))
             });
-            user_space_map.insert(info.username.clone(), UserSpace::new(info.username.clone()));
+            user_space_map.insert(username.clone(), UserSpace::new(username.clone()));
         }
         Self {
             sockets: Default::default(),

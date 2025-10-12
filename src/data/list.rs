@@ -26,7 +26,7 @@ impl ListDataManager {
     pub(super) fn new(user_path: &Path) -> Self {
         let path = user_path.join("list");
         let info_path = path.join("snapshotInfo.json");
-        let snapshot_info: SnapshotInfo = load_or_create(&info_path).unwrap();
+        let snapshot_info: SnapshotInfo = load_or_create(&info_path);
         Self {
             current_list_data: match snapshot_info.latest_key {
                 None => ListData::default(),

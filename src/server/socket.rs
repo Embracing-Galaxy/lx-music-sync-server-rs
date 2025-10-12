@@ -7,6 +7,7 @@ use crate::{
 };
 use actix_ws::Session;
 use serde_json::json;
+use std::fmt::Formatter;
 use std::{
     collections::HashMap,
     sync::{
@@ -113,5 +114,13 @@ impl SocketContext {
 
     async fn on_list_sync_action(&self) {
         todo!("broadcast sync action & update snapshot key");
+    }
+}
+
+impl std::fmt::Debug for SocketContext {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Socket")
+            .field("client_id", &self.client_id)
+            .finish()
     }
 }
