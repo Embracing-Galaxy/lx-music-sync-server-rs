@@ -56,7 +56,7 @@ pub(crate) async fn auth_by_code(encrypt_msg: &str) -> Result<String, &'static s
         let user_space = SERVER_CONTEXT.get_user_space(username).unwrap();
         let result = rsa_encrypt_with_base64(
             &format!(
-                r#"{{"clientId":{},"key":{},"serverName":{}}}"#,
+                r#"{{"clientId":"{}","key":"{}","serverName":"{}"}}"#,
                 device_info.client_id, device_info.key, CONFIG.server_name
             ),
             &public_key,

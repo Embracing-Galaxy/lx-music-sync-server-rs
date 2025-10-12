@@ -102,7 +102,7 @@ async fn main() -> std::io::Result<()> {
         .route("/id", get(server_id))
         .route("/ah", get(auth_code))
         .route("/hello", get(hello))
-        .route("/ws", get(websocket))
+        .route("/socket", get(websocket))
         .fallback(fallback)
         .with_state(connections)
         .into_make_service_with_connect_info::<SocketAddr>();
