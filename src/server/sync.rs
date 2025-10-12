@@ -5,12 +5,11 @@ use crate::utils::crypto::{hex_to_md5, MD5};
 
 pub(super) async fn sync_list_once(socket: &mut SocketContext, enabled_features: EnabledFeatures) {
     assert_eq!(enabled_features, EnabledFeatures::DEFAULT);
-    let username = &socket.username;
     // already checked in main
-    let user_space = SERVER_CONTEXT.get_user_space(username).unwrap();
+    let user_space = SERVER_CONTEXT.get_user_space(socket.username).unwrap();
     let add_location = &CONFIG
         .user_configs
-        .get(username)
+        .get(socket.username)
         .unwrap()
         .add_music_location;
 

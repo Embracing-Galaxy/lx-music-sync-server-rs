@@ -26,11 +26,11 @@ pub(crate) struct SocketContext {
     list_ready: Arc<AtomicBool>,
     handlers: Arc<Mutex<HashMap<String, oneshot::Sender<Resp>>>>,
     pub(super) client_id: ClientId,
-    pub(crate) username: String,
+    pub(crate) username: &'static str,
 }
 
 impl SocketContext {
-    pub(crate) fn new(session: Session, client_id: ClientId, username: String) -> Self {
+    pub(crate) fn new(session: Session, client_id: ClientId, username: &'static str) -> Self {
         Self {
             session,
             got_pong: Arc::new(AtomicBool::new(true)),

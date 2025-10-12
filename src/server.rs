@@ -17,8 +17,8 @@ pub(crate) static SERVER_CONTEXT: LazyLock<ServerContext> = LazyLock::new(|| Ser
 pub(crate) struct ServerContext {
     sockets: RwLock<HashMap<ClientId, SocketContext>>,
     auth_failed_ips: RwCounter<String>,
-    device_user_map: HashMap<ClientId, String>,
-    user_space_map: HashMap<String, UserSpace>,
+    device_user_map: HashMap<ClientId, &'static str>,
+    user_space_map: HashMap<&'static str, UserSpace>,
 }
 
 pub(crate) struct BlockedIPError;
@@ -28,12 +28,9 @@ impl ServerContext {
         let mut device_user_map = HashMap::new();
         let mut user_space_map = HashMap::new();
         for username in CONFIG.user_configs.keys() {
-            let path = Path::new(username);
-            let info = DevicesInfos::load(path.join("devices.json"));
-            async_scoped::TokioScope::scope_and_block(|scope| {
-                scope.spawn(info.register_each_device(&mut device_user_map))
-            });
-            user_space_map.insert(username.clone(), UserSpace::new(username.clone()));
+            let info = DevicesInfos::load(Path::new(username).join("devices.json"));
+            info.register_each_device(&mut device_user_map, &username);
+            user_space_map.insert(username.as_str(), UserSpace::new(username.clone()));
         }
         Self {
             sockets: Default::default(),
@@ -67,11 +64,11 @@ impl ServerContext {
     }
 
     /// get the corresponding username
-    pub(crate) fn get_username(&self, client_id: &ClientId) -> Option<&String> {
+    pub(crate) fn get_username(&self, client_id: &ClientId) -> Option<&&str> {
         self.device_user_map.get(client_id)
     }
 
-    pub(crate) fn get_user_space(&self, user_name: &String) -> Option<&UserSpace> {
+    pub(crate) fn get_user_space(&self, user_name: &str) -> Option<&UserSpace> {
         self.user_space_map.get(user_name)
     }
 
@@ -88,7 +85,7 @@ impl ServerContext {
     ) -> SocketContext {
         // TODO too much clone here
         let client_id = device_info.client_id.clone();
-        let username = self.device_user_map.get(&client_id).unwrap().clone(); // already checked
+        let username = *self.device_user_map.get(&client_id).unwrap(); // already checked
         let socket_context = SocketContext::new(session.clone(), client_id.clone(), username);
         if let Some(old) = self
             .sockets

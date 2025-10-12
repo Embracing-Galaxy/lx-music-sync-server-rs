@@ -61,7 +61,7 @@ pub(crate) async fn auth_by_code(encrypt_msg: &str) -> Result<String, &'static s
             ),
             &public_key,
         );
-        user_space.insert_device_info(device_info).await;
+        user_space.insert_device_info(device_info);
         return Ok(result);
     }
     Err(NO_SUCH_USER)

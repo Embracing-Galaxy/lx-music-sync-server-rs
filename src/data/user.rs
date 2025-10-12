@@ -1,3 +1,4 @@
+use crate::utils::load_or_create;
 use crate::{
     data::config::AddMusicLocation,
     data::{list::ListData, list::ListDataManager, ClientId},
@@ -9,7 +10,6 @@ use crate::{
 use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
@@ -35,18 +35,12 @@ impl UserSpace {
     }
 
     pub(crate) async fn get_client_device_info(&self, id: &str) -> Option<Arc<DeviceInfo>> {
-        self.user_data
-            .devices_infos
-            .clients
-            .read()
-            .await
-            .get(id)
-            .cloned()
+        self.user_data.devices_infos.clients.load().get(id).cloned()
     }
 
     pub(crate) async fn update_device_name(&self, id: &ClientId, device_name: &str) {
-        let clients = &self.user_data.devices_infos.clients.read().await;
-        let device_info = clients.get(id).unwrap();
+        let guard = self.user_data.devices_infos.clients.load();
+        let device_info = guard.get(id).unwrap();
         if device_info.device_name.load().as_str() != device_name {
             // assert only one socket would visit here
             device_info
@@ -56,13 +50,8 @@ impl UserSpace {
         }
     }
 
-    pub(crate) async fn insert_device_info(&self, device_info: DeviceInfo) {
-        self.user_data
-            .devices_infos
-            .clients
-            .write()
-            .await
-            .insert(device_info.client_id.clone(), Arc::new(device_info));
+    pub(crate) fn insert_device_info(&self, device_info: DeviceInfo) {
+        self.user_data.devices_infos.insert_device(device_info);
         self.user_data.write_devices_infos();
     }
 
@@ -125,8 +114,7 @@ impl UserData {
     fn write_devices_infos(&self) {
         async_scoped::TokioScope::scope_and_block(|scope| {
             scope.spawn(async {
-                let data = self.devices_infos.serialize().await;
-                tokio::fs::write(&self.devices_file_path, data)
+                tokio::fs::write(&self.devices_file_path, self.devices_infos.serialize())
                     .await
                     .unwrap();
             })
@@ -135,17 +123,19 @@ impl UserData {
 }
 
 pub(crate) struct DevicesInfos {
-    pub(crate) username: String,
-    clients: RwLock<HashMap<ClientId, Arc<DeviceInfo>>>,
+    clients: ArcSwap<HashMap<ClientId, Arc<DeviceInfo>>>,
 }
 
 impl DevicesInfos {
     pub(crate) fn load(path: impl AsRef<Path>) -> Self {
-        let deserialized: Helper = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        #[derive(Default, Deserialize, Serialize)]
+        struct Helper {
+            clients: HashMap<ClientId, DeviceInfo>,
+        }
+        let deserialized: Helper = load_or_create(path.as_ref());
 
         Self {
-            username: deserialized.username,
-            clients: RwLock::new(
+            clients: ArcSwap::from_pointee(
                 deserialized
                     .clients
                     .into_iter()
@@ -155,26 +145,28 @@ impl DevicesInfos {
         }
     }
 
-    pub(crate) async fn register_each_device(
+    pub(crate) fn register_each_device(
         &self,
-        device_user_map: &mut HashMap<ClientId, String>,
+        device_user_map: &mut HashMap<ClientId, &'static str>,
+        username: &'static str,
     ) {
-        for client_id in self.clients.read().await.keys() {
-            device_user_map.insert(client_id.clone(), self.username.clone());
+        for client_id in self.clients.load().keys() {
+            device_user_map.insert(client_id.clone(), username);
         }
     }
 
-    async fn serialize(&self) -> Vec<u8> {
-        let guard = self.clients.read().await;
+    /// Use RCU (Read-Copy-Update) mode
+    fn insert_device(&self, device_info: DeviceInfo) {
+        let mut new = (**self.clients.load()).clone();
+        new.insert(device_info.client_id.clone(), Arc::new(device_info));
+        self.clients.store(Arc::new(new));
+    }
+
+    fn serialize(&self) -> Vec<u8> {
+        let guard = self.clients.load();
         let infos: Vec<_> = guard.values().map(AsRef::as_ref).collect();
         serde_json::to_vec(&infos).unwrap()
     }
-}
-
-#[derive(Deserialize)]
-struct Helper {
-    username: String,
-    clients: HashMap<ClientId, DeviceInfo>,
 }
 
 #[derive(Deserialize, Serialize)]
