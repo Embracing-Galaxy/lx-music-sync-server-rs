@@ -1,6 +1,5 @@
 pub(crate) mod config;
 pub(crate) mod list;
-pub(crate) mod music;
 pub(crate) mod user;
 
 use crate::utils::{crypto::rand_16bytes_as_base64, load_or_create};
