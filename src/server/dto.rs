@@ -1,19 +1,19 @@
 use serde::{Deserialize, Deserializer, Serialize};
+use std::any::type_name;
 
 #[derive(Deserialize, Serialize)]
 pub(super) struct Req {
     name: String,
     path: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    data: Option<serde_json::Value>,
+    data: serde_json::Value,
 }
 
 impl Req {
-    pub(super) fn new(name: &str, data: Option<Vec<serde_json::Value>>) -> (String, Self) {
+    pub(super) fn new(name: &str, data: Vec<serde_json::Value>) -> (String, Self) {
         let req = Self {
             name: format!("{}__{}", name, rand::random::<u8>()),
             path: vec![name.to_string()],
-            data: data.map(|v| serde_json::Value::Array(v)),
+            data: serde_json::Value::Array(data),
         };
         (req.name.clone(), req)
     }
@@ -23,13 +23,11 @@ impl Req {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub(crate) struct Resp {
     /// the response event name, the same as the corresponding request name
     name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<serde_json::Value>,
 }
 
@@ -39,7 +37,15 @@ impl Resp {
     }
 
     pub(crate) fn get_data<T: serde::de::DeserializeOwned>(self) -> Option<T> {
-        self.data.map(|data| T::deserialize(data).unwrap())
+        if let Some(err) = self.error {
+            panic!("client response with err: {err}");
+        }
+        self.data.map(|data| {
+            T::deserialize(data).expect(&format!(
+                "Resp of type {} deserialization error",
+                type_name::<T>()
+            ))
+        })
     }
 }
 

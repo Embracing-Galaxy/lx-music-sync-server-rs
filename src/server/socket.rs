@@ -55,7 +55,7 @@ impl SocketContext {
     pub(crate) async fn request(
         &self,
         name: &str,
-        data: Option<Vec<serde_json::Value>>,
+        data: Vec<serde_json::Value>,
     ) -> Result<oneshot::Receiver<Resp>, axum::Error> {
         debug!("request: {}", name);
         let (key, req) = Req::new(name, data);
@@ -157,13 +157,13 @@ async fn sync_once(context: SocketContext) {
     let receiver = context
         .request(
             "getEnabledFeatures",
-            Some(vec![
+            vec![
                 json!("server"),
                 json!({
                     "list": 1,
                     "dislike": 1
                 }),
-            ]),
+            ],
         )
         .await
         .unwrap();

@@ -121,8 +121,11 @@ impl SnapshotInfo {
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub(crate) struct ListData {
+    #[serde(rename = "defaultList")]
     default: Vec<MusicInfo>,
+    #[serde(rename = "loveList")]
     love: Vec<MusicInfo>,
+    #[serde(rename = "userList")]
     custom_lists: Vec<CustomList>,
 }
 
@@ -228,7 +231,7 @@ struct CustomList {
 
 /// deserialize "userlist_<some number>" to u64
 fn deserialize_list_id<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error> {
-    let raw_str = <&str>::deserialize(de)?;
+    let raw_str = String::deserialize(de)?;
     const PREFIX_LEN: usize = "userlist_".len();
     raw_str[PREFIX_LEN..]
         .parse()
@@ -354,5 +357,19 @@ mod music {
         WY,
         MG,
         LOCAL,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::de::value::{Error, StrDeserializer};
+    use super::deserialize_list_id;
+
+    #[test]
+    fn deserialize_custom_list_id() {
+        let id = "userlist_12345";
+        let de = StrDeserializer::<Error>::new(id);
+        let id: u64 = deserialize_list_id(de).expect("should parse");
+        assert_eq!(id, 12345);
     }
 }

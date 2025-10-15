@@ -35,13 +35,13 @@ pub(super) async fn sync_list_once(socket: &SocketContext, enabled_features: Ena
 /// Used to prompt the client to start performing incremental sync
 /// after manual sync is completed
 async fn finished_sync(socket: &SocketContext) {
-    socket.request("list_sync_finished", None).await.unwrap();
+    socket.request("list_sync_finished", vec![]).await.unwrap();
     socket.list_ready();
 }
 
 async fn get_client_list_data(socket: &SocketContext) -> ListData {
     let receiver = socket
-        .request("list_sync_get_list_data", None)
+        .request("list_sync_get_list_data", vec![])
         .await
         .unwrap();
     let resp = receiver.await.unwrap();
@@ -49,7 +49,7 @@ async fn get_client_list_data(socket: &SocketContext) -> ListData {
 }
 
 async fn get_client_list_md5(socket: &SocketContext) -> MD5 {
-    let receiver = socket.request("list_sync_get_md5", None).await.unwrap();
+    let receiver = socket.request("list_sync_get_md5", vec![]).await.unwrap();
     let resp = receiver.await.unwrap();
     let hex_str = resp.get_data::<String>().unwrap();
     hex_to_md5(&hex_str)
@@ -58,7 +58,7 @@ async fn get_client_list_md5(socket: &SocketContext) -> MD5 {
 async fn set_client_list(socket: &SocketContext, list_data: &Vec<u8>) {
     let data: serde_json::Value = serde_json::from_slice(&list_data).unwrap();
     socket
-        .request("list_sync_set_list_data", Some(vec![data]))
+        .request("list_sync_set_list_data", vec![data])
         .await
         .unwrap();
 }
