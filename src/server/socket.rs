@@ -12,7 +12,7 @@ use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use futures_util::stream::SplitStream;
 use futures_util::{stream::SplitSink, SinkExt, StreamExt};
-use log::{debug, info};
+use log::{info, trace};
 use serde_json::json;
 use std::fmt::Formatter;
 use std::sync::{
@@ -57,7 +57,7 @@ impl SocketContext {
         name: &str,
         data: Vec<serde_json::Value>,
     ) -> Result<oneshot::Receiver<Resp>, axum::Error> {
-        debug!("request: {}", name);
+        trace!("request: {}", name);
         let (key, req) = Req::new(name, data);
         let text = req.to_json();
         if text.len() > 1024 {
@@ -138,7 +138,7 @@ async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Ar
                 } else {
                     text.as_bytes().to_vec()
                 };
-                debug!(
+                trace!(
                     "{:?} received data:{}",
                     context,
                     String::from_utf8_lossy(&data)
@@ -148,7 +148,7 @@ async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Ar
             Message::Pong(_) => {
                 got_pong.store(true, Ordering::Relaxed);
             }
-            _ => debug!("Skipped message: {:?}", msg),
+            _ => trace!("Skipped message: {:?}", msg),
         }
     }
 }
