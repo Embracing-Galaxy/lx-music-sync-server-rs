@@ -1,11 +1,8 @@
-use crate::data::user::DeviceInfo;
-use crate::data::Username;
-use crate::utils::ungzip_base64;
 use crate::{
-    data::ClientId,
+    data::{user::DeviceInfo, ClientId, Username},
     server::dto::{EnabledFeatures, Req, Resp},
     server::sync::sync_list_once,
-    utils::gzip_base64,
+    utils::{gzip_base64, ungzip_base64},
     ConnectionMap,
 };
 use axum::extract::ws::{Message, WebSocket};
@@ -24,7 +21,6 @@ use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinSet;
 use tokio::time::interval;
 
-// static LOCK: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
 #[derive(Clone)]
 pub(super) struct SocketContext {
     sender: Arc<Mutex<Sender>>,
@@ -42,7 +38,7 @@ impl SocketContext {
         Self {
             sender: Arc::new(Mutex::new(sender)),
             list_ready: Default::default(),
-            handlers: Default::default(),
+            handlers: Default::default(), // TODO A more efficient CallbackManager (make id usize & use vec)
             client_id: device_info.client_id.clone(),
             username,
         }
@@ -56,26 +52,22 @@ impl SocketContext {
         &self,
         name: &str,
         data: Vec<serde_json::Value>,
-    ) -> Result<oneshot::Receiver<Resp>, axum::Error> {
+    ) -> oneshot::Receiver<Resp> {
         trace!("request: {}", name);
         let (key, req) = Req::new(name, data);
         let text = req.to_json();
-        if text.len() > 1024 {
-            self.sender
-                .lock()
-                .await
-                .send(Message::Text(format!("cg_{}", gzip_base64(text)).into()))
-                .await?;
+        let message = if text.len() > 1024 {
+            Message::Text(format!("cg_{}", gzip_base64(text)).into())
         } else {
-            self.sender
-                .lock()
-                .await
-                .send(Message::Text(text.into()))
-                .await?;
+            Message::Text(text.into())
+        };
+        {
+            let mut lock = self.sender.lock().await;
+            lock.send(message).await.expect("Failed to send message");
         }
         let (tx, rx) = oneshot::channel();
         self.handlers.insert(key, tx);
-        Ok(rx)
+        rx
     }
 
     pub(crate) fn on_message_string(&self, resp: &[u8]) {
@@ -165,12 +157,12 @@ async fn sync_once(context: SocketContext) {
                 }),
             ],
         )
-        .await
-        .unwrap();
+        .await;
     let resp = receiver.await.unwrap();
     let enabled_features = resp.get_data::<EnabledFeatures>().unwrap();
-    // let _ = LOCK.acquire().await;
-    sync_list_once(&context, enabled_features).await;
+    assert_eq!(enabled_features, EnabledFeatures::DEFAULT);
+    sync_list_once(&context).await;
+    // TODO sync dislike & send `finished`
 }
 
 pub(crate) async fn handle_socket(

@@ -1,10 +1,9 @@
 use crate::data::config::CONFIG;
 use crate::data::{list::ListData, user::UserSpace};
-use crate::server::{dto::EnabledFeatures, socket::SocketContext, SERVER_CONTEXT};
+use crate::server::{socket::SocketContext, SERVER_CONTEXT};
 use crate::utils::crypto::{hex_to_md5, MD5};
 
-pub(super) async fn sync_list_once(socket: &SocketContext, enabled_features: EnabledFeatures) {
-    assert_eq!(enabled_features, EnabledFeatures::DEFAULT);
+pub(super) async fn sync_list_once(socket: &SocketContext) {
     // already checked in main
     let user_space = SERVER_CONTEXT.get_user_space(socket.username).unwrap();
     let add_location = &CONFIG
@@ -35,21 +34,18 @@ pub(super) async fn sync_list_once(socket: &SocketContext, enabled_features: Ena
 /// Used to prompt the client to start performing incremental sync
 /// after manual sync is completed
 async fn finished_sync(socket: &SocketContext) {
-    socket.request("list_sync_finished", vec![]).await.unwrap();
+    socket.request("list_sync_finished", vec![]).await;
     socket.list_ready();
 }
 
 async fn get_client_list_data(socket: &SocketContext) -> ListData {
-    let receiver = socket
-        .request("list_sync_get_list_data", vec![])
-        .await
-        .unwrap();
+    let receiver = socket.request("list_sync_get_list_data", vec![]).await;
     let resp = receiver.await.unwrap();
     resp.get_data().unwrap()
 }
 
 async fn get_client_list_md5(socket: &SocketContext) -> MD5 {
-    let receiver = socket.request("list_sync_get_md5", vec![]).await.unwrap();
+    let receiver = socket.request("list_sync_get_md5", vec![]).await;
     let resp = receiver.await.unwrap();
     let hex_str = resp.get_data::<String>().unwrap();
     hex_to_md5(&hex_str)
@@ -57,17 +53,12 @@ async fn get_client_list_md5(socket: &SocketContext) -> MD5 {
 
 async fn set_client_list(socket: &SocketContext, list_data: &Vec<u8>) {
     let data: serde_json::Value = serde_json::from_slice(&list_data).unwrap();
-    socket
-        .request("list_sync_set_list_data", vec![data])
-        .await
-        .unwrap();
+    socket.request("list_sync_set_list_data", vec![data]).await;
 }
 
 async fn list_latest(socket: &SocketContext, user_space: &UserSpace) -> bool {
     let client_md5 = get_client_list_md5(socket).await;
-    let snapshot_key = user_space
-        .get_snapshot_key(&socket.client_id)
-        .await;
+    let snapshot_key = user_space.get_snapshot_key(&socket.client_id).await;
     let current_key = user_space.get_current_list_info_key().await;
 
     let latest = client_md5 == current_key;
@@ -75,7 +66,9 @@ async fn list_latest(socket: &SocketContext, user_space: &UserSpace) -> bool {
         && let Some(snapshot_key) = snapshot_key
         && snapshot_key != current_key
     {
-        user_space.update_snapshot_key(&socket.client_id, current_key).await;
+        user_space
+            .update_snapshot_key(&socket.client_id, current_key)
+            .await;
     }
     latest
 }

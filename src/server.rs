@@ -12,7 +12,7 @@ use tokio::time::interval;
 
 mod dto;
 pub(crate) mod socket;
-pub(crate) mod sync;
+mod sync;
 
 pub(crate) static SERVER_CONTEXT: LazyLock<ServerContext> = LazyLock::new(|| ServerContext::new());
 
