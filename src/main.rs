@@ -55,7 +55,7 @@ async fn hello() -> &'static str {
 
 #[derive(Deserialize)]
 struct SocketInfo {
-    i: String,
+    i: ClientId,
     #[allow(unused)]
     t: String,
 }

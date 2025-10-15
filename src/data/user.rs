@@ -125,13 +125,9 @@ impl UserData {
 
     /// Write `devices_infos` to file without await
     fn write_devices_infos(&self) {
-        async_scoped::TokioScope::scope_and_block(|scope| {
-            scope.spawn(async {
-                tokio::fs::write(&self.devices_file_path, self.devices_infos.serialize())
-                    .await
-                    .unwrap();
-            })
-        });
+        let path = self.devices_file_path.clone();
+        let devices_infos = self.devices_infos.clone();
+        tokio::spawn(tokio::fs::write(path, devices_infos.serialize()));
     }
 }
 

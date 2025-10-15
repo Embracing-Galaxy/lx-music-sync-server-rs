@@ -1,4 +1,5 @@
 use crate::data::user::DeviceInfo;
+use crate::data::Username;
 use crate::utils::ungzip_base64;
 use crate::{
     data::ClientId,
@@ -9,99 +10,85 @@ use crate::{
 };
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
-use log::{debug, info, warn};
+use futures_util::stream::SplitStream;
+use futures_util::{stream::SplitSink, SinkExt, StreamExt};
+use log::{debug, info};
 use serde_json::json;
 use std::fmt::Formatter;
 use std::sync::{
-    atomic::{AtomicBool, Ordering}, Arc,
-    LazyLock,
+    atomic::{AtomicBool, Ordering},
+    Arc,
 };
 use std::time::Duration;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, Mutex};
+use tokio::task::JoinSet;
 use tokio::time::interval;
-use crate::data::Username;
 
-static LOCK: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
-
-pub(crate) struct SocketContext {
-    socket: WebSocket,
+// static LOCK: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(1));
+#[derive(Clone)]
+pub(super) struct SocketContext {
+    sender: Arc<Mutex<Sender>>,
+    list_ready: Arc<AtomicBool>,
     handlers: Arc<DashMap<String, oneshot::Sender<Resp>>>,
     pub(super) client_id: ClientId,
-    is_mobile: bool,
     pub(crate) username: Username,
 }
 
+type Sender = SplitSink<WebSocket, Message>;
+type Receiver = SplitStream<WebSocket>;
+
 impl SocketContext {
-    pub(crate) fn new(socket: WebSocket, device_info: &DeviceInfo, username: Username) -> Self {
+    pub(crate) fn new(sender: Sender, device_info: &DeviceInfo, username: Username) -> Self {
         Self {
-            socket,
+            sender: Arc::new(Mutex::new(sender)),
+            list_ready: Default::default(),
             handlers: Default::default(),
             client_id: device_info.client_id.clone(),
-            is_mobile: device_info.is_mobile,
             username,
         }
     }
 
-    async fn ping(&mut self) {
-        let ping_msg = if self.is_mobile {
-            Message::text("ping")
-        } else {
-            Message::Ping(Default::default())
-        };
-        self.socket
-            .send(ping_msg)
-            .await
-            .expect("Couldn't send ping");
+    pub(crate) fn list_ready(&self) {
+        self.list_ready.store(true, Ordering::Relaxed);
     }
 
     pub(crate) async fn request(
-        &mut self,
+        &self,
         name: &str,
-        data: Option<serde_json::Value>,
+        data: Option<Vec<serde_json::Value>>,
     ) -> Result<oneshot::Receiver<Resp>, axum::Error> {
-        let text = Req::new(name, data).to_json();
+        debug!("request: {}", name);
+        let (key, req) = Req::new(name, data);
+        let text = req.to_json();
         if text.len() > 1024 {
-            self.socket
+            self.sender
+                .lock()
+                .await
                 .send(Message::Text(format!("cg_{}", gzip_base64(text)).into()))
                 .await?;
         } else {
-            self.socket.send(Message::Text(text.into())).await?;
+            self.sender
+                .lock()
+                .await
+                .send(Message::Text(text.into()))
+                .await?;
         }
         let (tx, rx) = oneshot::channel();
-        self.handlers.insert(name.to_string(), tx);
+        self.handlers.insert(key, tx);
         Ok(rx)
     }
 
-    pub(crate) fn on_response_string(&self, resp: &[u8]) {
-        let json = serde_json::from_slice::<Resp>(resp).unwrap();
-        let Some((_, tx)) = self.handlers.remove(json.get_name()) else {
-            return;
+    pub(crate) fn on_message_string(&self, resp: &[u8]) {
+        let json = match serde_json::from_slice::<Resp>(resp) {
+            Ok(json) => json,
+            Err(_) => todo!("handle req"),
         };
-        tx.send(json).unwrap();
+        if let Some((_, tx)) = self.handlers.remove(json.get_name()) {
+            tx.send(json).unwrap();
+        }
     }
 
-    async fn sync_once(&mut self) {
-        let enabled_features = self.get_enabled_features().await;
-        let _ = LOCK.acquire().await;
-        sync_list_once(self, enabled_features).await;
-    }
-
-    async fn get_enabled_features(&mut self) -> EnabledFeatures {
-        let receiver = self
-            .request(
-                "getEnabledFeatures",
-                Some(json!({
-                    "list": 1,
-                    "dislike": 1
-                })),
-            )
-            .await
-            .unwrap();
-        let resp = receiver.await.unwrap();
-        resp.get_data::<EnabledFeatures>().unwrap()
-    }
-
-    pub(crate) async fn broadcast_sync_result(&mut self) {
+    pub(crate) async fn broadcast_sync_result(&self) {
         todo!("rewrite")
     }
 
@@ -118,6 +105,74 @@ impl std::fmt::Debug for SocketContext {
     }
 }
 
+async fn heartbeat(
+    context: SocketContext,
+    got_pong: Arc<AtomicBool>,
+    is_mobile: bool,
+    device_name: Arc<String>,
+) {
+    let mut pong_timeout = interval(Duration::from_secs(30));
+    loop {
+        pong_timeout.tick().await;
+        if !got_pong.swap(false, Ordering::Relaxed) {
+            info!("Closing connection of device {device_name}: Client didn't pong within 30s.");
+            break;
+        }
+
+        let ping_msg = if is_mobile {
+            Message::text("ping")
+        } else {
+            Message::Ping(Default::default())
+        };
+        let mut lock = context.sender.lock().await;
+        lock.send(ping_msg).await.expect("Couldn't send ping");
+    }
+}
+
+async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Arc<AtomicBool>) {
+    while let Some(Ok(msg)) = receiver.next().await {
+        match msg {
+            Message::Text(text) => {
+                let data = if text[..3].eq("cg_") {
+                    ungzip_base64(&text[3..])
+                } else {
+                    text.as_bytes().to_vec()
+                };
+                debug!(
+                    "{:?} received data:{}",
+                    context,
+                    String::from_utf8_lossy(&data)
+                );
+                context.on_message_string(&data);
+            }
+            Message::Pong(_) => {
+                got_pong.store(true, Ordering::Relaxed);
+            }
+            _ => debug!("Skipped message: {:?}", msg),
+        }
+    }
+}
+
+async fn sync_once(context: SocketContext) {
+    let receiver = context
+        .request(
+            "getEnabledFeatures",
+            Some(vec![
+                json!("server"),
+                json!({
+                    "list": 1,
+                    "dislike": 1
+                }),
+            ]),
+        )
+        .await
+        .unwrap();
+    let resp = receiver.await.unwrap();
+    let enabled_features = resp.get_data::<EnabledFeatures>().unwrap();
+    // let _ = LOCK.acquire().await;
+    sync_list_once(&context, enabled_features).await;
+}
+
 pub(crate) async fn handle_socket(
     socket: WebSocket,
     username: Username,
@@ -128,59 +183,34 @@ pub(crate) async fn handle_socket(
 
     if let Some(old_close_tx) = connections.insert(device_info.client_id.clone(), close_tx) {
         let _ = old_close_tx.send(());
-        warn!("Duplicate connection found! Closed old connection");
+        info!("Duplicate connection found! Closed old connection");
     }
 
     let device_name = device_info.get_device_name();
     info!("User {username} on device {device_name} connected");
 
-    let socket_context: SocketContext = SocketContext::new(socket, &device_info, username);
+    let (sender, receiver) = socket.split();
+    let socket_context = SocketContext::new(sender, &device_info, username);
+
+    let flag = Arc::new(AtomicBool::new(true));
+    let context = socket_context.clone();
+    let got_pong = flag.clone();
+    let device_name_cloned = device_name.clone();
+    let is_mobile = device_info.is_mobile;
+    let mut tasks = JoinSet::new();
+    tasks.spawn(heartbeat(context, got_pong, is_mobile, device_name_cloned));
+
+    let context = socket_context.clone();
+    let got_pong = flag.clone();
+    let message_handle = tokio::spawn(on_message(context, receiver, got_pong));
+
+    let context = socket_context.clone();
+    tasks.spawn(sync_once(context));
     tokio::select! {
-        _ = handle_websocket_messages(socket_context, &device_name) => {},
-        _ = close_rx => {
-            // Received a shutdown signal, exit directly.
-        },
+        _ = message_handle => {},
+        _ = close_rx => {},
     }
-
+    tasks.shutdown().await;
+    info!("Closing connection of device {device_name}.");
     connections.remove(&device_info.client_id);
-}
-
-async fn handle_websocket_messages(mut context: SocketContext, device_name: &str) {
-    context.sync_once().await;
-
-    let mut pong_timeout = interval(Duration::from_secs(30));
-    let got_pong = AtomicBool::new(true);
-    loop {
-        tokio::select! {
-            _ = pong_timeout.tick() => {
-                if !got_pong.swap(false, Ordering::Relaxed) {
-                    warn!("Closing connection of device {device_name}: Client didn't pong within 30s.");
-                    break;
-                }
-                context.ping().await;
-            }
-            Some(Ok(msg)) = context.socket.recv() => {
-                match msg {
-                    Message::Text(text) => {
-                        let data = if text[..3].eq("cg_") {
-                            ungzip_base64(&text[3..])
-                        } else {
-                            text.as_bytes().to_vec()
-                        };
-                        debug!("{:?} received data:{}", context, String::from_utf8_lossy(&data));
-                        context.on_response_string(&data);
-                        todo!("handle req");
-                    }
-                    Message::Pong(_) => {
-                        got_pong.store(true, Ordering::Relaxed);
-                    }
-                    Message::Close(reason) => {
-                        info!("Closing connection of device {device_name}, for reason: {:?}", reason);
-                        break;
-                    }
-                    _ => warn!("Unsupported message: {:?}", msg),
-                }
-            }
-        }
-    }
 }

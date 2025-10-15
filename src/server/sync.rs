@@ -3,7 +3,7 @@ use crate::data::{list::ListData, user::UserSpace};
 use crate::server::{dto::EnabledFeatures, socket::SocketContext, SERVER_CONTEXT};
 use crate::utils::crypto::{hex_to_md5, MD5};
 
-pub(super) async fn sync_list_once(socket: &mut SocketContext, enabled_features: EnabledFeatures) {
+pub(super) async fn sync_list_once(socket: &SocketContext, enabled_features: EnabledFeatures) {
     assert_eq!(enabled_features, EnabledFeatures::DEFAULT);
     // already checked in main
     let user_space = SERVER_CONTEXT.get_user_space(socket.username).unwrap();
@@ -34,11 +34,12 @@ pub(super) async fn sync_list_once(socket: &mut SocketContext, enabled_features:
 
 /// Used to prompt the client to start performing incremental sync
 /// after manual sync is completed
-async fn finished_sync(socket: &mut SocketContext) {
+async fn finished_sync(socket: &SocketContext) {
     socket.request("list_sync_finished", None).await.unwrap();
+    socket.list_ready();
 }
 
-async fn get_client_list_data(socket: &mut SocketContext) -> ListData {
+async fn get_client_list_data(socket: &SocketContext) -> ListData {
     let receiver = socket
         .request("list_sync_get_list_data", None)
         .await
@@ -47,22 +48,22 @@ async fn get_client_list_data(socket: &mut SocketContext) -> ListData {
     resp.get_data().unwrap()
 }
 
-async fn get_client_list_md5(socket: &mut SocketContext) -> MD5 {
+async fn get_client_list_md5(socket: &SocketContext) -> MD5 {
     let receiver = socket.request("list_sync_get_md5", None).await.unwrap();
     let resp = receiver.await.unwrap();
     let hex_str = resp.get_data::<String>().unwrap();
     hex_to_md5(&hex_str)
 }
 
-async fn set_client_list(socket: &mut SocketContext, list_data: &Vec<u8>) {
+async fn set_client_list(socket: &SocketContext, list_data: &Vec<u8>) {
     let data: serde_json::Value = serde_json::from_slice(&list_data).unwrap();
     socket
-        .request("list_sync_set_list_data", Some(data))
+        .request("list_sync_set_list_data", Some(vec![data]))
         .await
         .unwrap();
 }
 
-async fn list_latest(socket: &mut SocketContext, user_space: &UserSpace) -> bool {
+async fn list_latest(socket: &SocketContext, user_space: &UserSpace) -> bool {
     let client_md5 = get_client_list_md5(socket).await;
     let snapshot_key = user_space
         .get_snapshot_key(&socket.client_id)

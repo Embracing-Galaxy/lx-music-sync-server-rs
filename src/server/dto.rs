@@ -9,12 +9,13 @@ pub(super) struct Req {
 }
 
 impl Req {
-    pub(super) fn new(name: &str, data: Option<serde_json::Value>) -> Self {
-        Self {
+    pub(super) fn new(name: &str, data: Option<Vec<serde_json::Value>>) -> (String, Self) {
+        let req = Self {
             name: format!("{}__{}", name, rand::random::<u8>()),
             path: vec![name.to_string()],
-            data,
-        }
+            data: data.map(|v| serde_json::Value::Array(v)),
+        };
+        (req.name.clone(), req)
     }
 
     pub(super) fn to_json(&self) -> String {
@@ -63,6 +64,7 @@ impl EnabledFeatures {
 
 #[derive(Debug, Deserialize, PartialEq)]
 pub(super) struct ListConfig {
+    #[serde(rename = "skipSnapshot")]
     pub(super) skip_snapshot: bool,
 }
 

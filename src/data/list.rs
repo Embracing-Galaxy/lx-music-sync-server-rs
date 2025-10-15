@@ -5,7 +5,6 @@ use crate::data::{
 };
 use crate::utils::crypto::md5_to_hex;
 use crate::utils::{
-    async_write,
     crypto::{to_md5, MD5},
     load_or_create, now_ms,
 };
@@ -71,18 +70,16 @@ impl ListDataManager {
         }
 
         if !self.snapshot_info.saved_keys.insert(key) {
-            async_write(
-                &self.path.join(md5_to_hex(&key, 32)),
-                &serde_json::to_vec(&self.current_list_data).unwrap(),
-            );
+            let path = self.path.join(md5_to_hex(&key, 32));
+            let data = serde_json::to_vec(&self.current_list_data).unwrap();
+            tokio::spawn(tokio::fs::write(path, data));
         };
 
         self.snapshot_info.time = now_ms();
         self.snapshot_info.latest_key = Some(key);
-        async_write(
-            &self.info_path,
-            &serde_json::to_vec(&self.snapshot_info).unwrap(),
-        );
+        let path = self.info_path.to_owned();
+        let data = serde_json::to_vec(&self.snapshot_info).unwrap();
+        tokio::spawn(tokio::fs::write(path, data));
 
         key
     }
@@ -236,7 +233,9 @@ struct CustomList {
 fn deserialize_list_id<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error> {
     let raw_str = <&str>::deserialize(de)?;
     const PREFIX_LEN: usize = "userlist_".len();
-    raw_str[PREFIX_LEN..].parse().map_err(serde::de::Error::custom)
+    raw_str[PREFIX_LEN..]
+        .parse()
+        .map_err(serde::de::Error::custom)
 }
 
 impl CustomList {

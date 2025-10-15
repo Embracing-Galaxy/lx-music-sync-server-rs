@@ -31,15 +31,11 @@ pub fn filter_file_name(name: &str) -> String {
     name.chars().filter(|c| !ILLEGAL.contains(c)).collect()
 }
 
-pub fn async_write(path: &Path, data: &[u8]) {
-    async_scoped::TokioScope::scope_and_block(|scope| scope.spawn(tokio::fs::write(path, data)));
-}
-
 // ----------------------------------------------------------------------------------
 
+use dashmap::{DashMap, Entry};
 use std::hash::Hash;
 use std::time::{Duration, Instant};
-use dashmap::{DashMap, Entry};
 
 pub struct RwCounter<T: Eq + Hash> {
     map: DashMap<T, (usize, Instant)>,
@@ -79,8 +75,7 @@ impl<T: Eq + Hash> RwCounter<T> {
             // TODO "Make `last_used` persistent"
             return; // The program did not run long enough
         };
-        self.map
-            .retain(|_, (_, last_used)| *last_used >= deadline);
+        self.map.retain(|_, (_, last_used)| *last_used >= deadline);
     }
 }
 
