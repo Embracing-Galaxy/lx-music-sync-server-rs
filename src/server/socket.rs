@@ -76,7 +76,7 @@ impl SocketContext {
     /// # Examples
     ///
     /// ```
-    /// let callback = socket_context.request("get", vec![json!("data")]).await; 
+    /// let callback = socket_context.request("get", vec![json!("data")]).await;
     /// let resp = callback.await.unwrap();
     /// ```
     pub(crate) async fn request(
@@ -272,11 +272,11 @@ pub(crate) async fn handle_socket(
 
     if let Some(old_close_tx) = connections.insert(device_info.client_id.clone(), close_tx) {
         let _ = old_close_tx.send(());
-        info!("Duplicate connection found! Closed old connection");
+        info!("Duplicate connection found! Closed old connection.");
     }
 
     let device_name = device_info.get_device_name();
-    info!("User {username} on device {device_name} connected");
+    info!("User {username} on device {device_name} connected.");
 
     let (sender, receiver) = socket.split();
     let broadcast_rx = broadcaster.subscribe();

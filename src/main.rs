@@ -120,7 +120,7 @@ async fn main() -> std::io::Result<()> {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9527));
     let listener = TcpListener::bind(addr).await?;
-    info!("Listening on {addr}");
+    info!("Listening on {addr}.");
     axum::serve(listener, app).await?;
     Ok(())
 }
