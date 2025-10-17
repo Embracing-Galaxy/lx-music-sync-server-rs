@@ -58,8 +58,7 @@ impl SnapshotInfo {
     }
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum DataType {
     LIST,
     DISLIKE,
@@ -101,7 +100,10 @@ impl<DATA: Data> DataManager<DATA> {
 
     pub(crate) async fn get_info_key(&self) -> SnapshotKey {
         match self.snapshot_info.read().await.latest_key {
-            None => self.create_snapshot().await,
+            None => {
+                self.create_snapshot(serde_json::to_vec(&*self.current_data.read().await).unwrap())
+                    .await
+            }
             Some(latest) => latest.clone(),
         }
     }
@@ -115,8 +117,7 @@ impl<DATA: Data> DataManager<DATA> {
             .cloned()
     }
 
-    async fn create_snapshot(&self) -> SnapshotKey {
-        let bytes = serde_json::to_vec(&*self.current_data.read().await).unwrap();
+    async fn create_snapshot(&self, bytes: Vec<u8>) -> SnapshotKey {
         let key = to_md5(&bytes);
         if let Some(latest_key) = self.snapshot_info.read().await.latest_key
             && latest_key == key
@@ -151,7 +152,7 @@ impl<DATA: Data> DataManager<DATA> {
             .merge(client, snapshot, add_location);
         let bytes = serde_json::to_vec(&*self.current_data.read().await).unwrap();
         self.update_snapshot_key(client_id, to_md5(&bytes)).await;
-        (bytes, self.create_snapshot().await)
+        (bytes.clone(), self.create_snapshot(bytes).await)
     }
 
     pub(crate) async fn overwrite(&self, client_id: &ClientId, data: DATA) {
@@ -161,6 +162,7 @@ impl<DATA: Data> DataManager<DATA> {
         let bytes = serde_json::to_vec(&data).unwrap();
         self.update_snapshot_key(client_id, to_md5(&bytes)).await;
         *self.current_data.write().await = data;
+        self.create_snapshot(bytes).await;
     }
 
     pub(crate) async fn update_snapshot_key(&self, client_id: &ClientId, key: SnapshotKey) {

@@ -3,7 +3,7 @@ use crate::server::SERVER_CONTEXT;
 use crate::utils::load_or_create;
 use crate::{
     data::ClientId,
-    utils::{crypto::rand_16bytes_as_base64, filter_file_name},
+    utils::crypto::rand_16bytes_as_base64,
 };
 use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
@@ -23,10 +23,11 @@ pub(crate) struct UserSpace {
 impl UserSpace {
     pub(crate) fn new(
         user_name: Username,
+        user_path: Box<Path>,
         devices_infos: DevicesInfos,
         devices_file_path: Arc<Path>,
     ) -> Self {
-        let user_data = UserData::new(user_name, devices_infos, devices_file_path);
+        let user_data = UserData::new(user_name, user_path, devices_infos, devices_file_path);
         let path = &user_data.user_path;
         Self {
             list: DataManager::new(&path.join("list")),
@@ -67,17 +68,17 @@ struct UserData {
 }
 
 impl UserData {
-    pub(crate) fn new(
+    fn new(
         username: Username,
+        user_path: Box<Path>,
         device_infos: DevicesInfos,
         devices_file_path: Arc<Path>,
     ) -> Self {
-        let dir = USERS_PATH.join(filter_file_name(username));
         Self {
             username,
-            devices_infos: Arc::new(device_infos),
-            user_path: dir.into_boxed_path(),
+            user_path,
             devices_file_path,
+            devices_infos: Arc::new(device_infos),
         }
     }
 

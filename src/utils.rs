@@ -25,12 +25,6 @@ pub fn load_or_create<'a, T: Default + DeserializeOwned + Serialize>(path: &Path
     }
 }
 
-/// Remove illegal chars in Windows
-pub fn filter_file_name(name: &str) -> String {
-    const ILLEGAL: &[char] = &['\\', '/', ':', '*', '?', '#', '"', '<', '>', '|'];
-    name.chars().filter(|c| !ILLEGAL.contains(c)).collect()
-}
-
 // ----------------------------------------------------------------------------------
 
 use dashmap::{DashMap, Entry};

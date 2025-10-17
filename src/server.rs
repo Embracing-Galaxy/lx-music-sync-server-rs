@@ -1,13 +1,12 @@
 use crate::data::config::CONFIG;
-use crate::data::user::{DevicesInfos, UserSpace};
+use crate::data::user::{DevicesInfos, UserSpace, USERS_PATH};
 use crate::data::{ClientId, Username};
 use crate::utils::RwCounter;
+use arc_swap::ArcSwap;
 use axum::http::HeaderMap;
 use std::net::SocketAddr;
-use std::path::Path;
-use std::{collections::HashMap, sync::LazyLock, time::Duration};
 use std::sync::Arc;
-use arc_swap::ArcSwap;
+use std::{collections::HashMap, sync::LazyLock, time::Duration};
 use tokio::time::interval;
 
 pub(crate) mod socket;
@@ -28,12 +27,13 @@ impl ServerContext {
         let mut device_user_map = HashMap::new();
         let mut user_space_map = HashMap::new();
         for username in CONFIG.user_configs.keys() {
-            let path = Path::new(username).join("devices.json");
-            let infos = DevicesInfos::load(&path);
+            let user_path = USERS_PATH.join(username);
+            let devices_infos_path = user_path.join("devices.json");
+            let infos = DevicesInfos::load(&devices_infos_path);
             infos.register_each_device(&mut device_user_map, &username);
             user_space_map.insert(
                 username.as_str(),
-                UserSpace::new(username, infos, path.into()),
+                UserSpace::new(username, user_path.into(), infos, devices_infos_path.into()),
             );
         }
         Self {
