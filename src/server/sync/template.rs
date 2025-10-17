@@ -10,8 +10,8 @@ macro_rules! sync_once_for {
             user_space: &UserSpace,
             add_location: &AddMusicLocation,
         ) {
-            let receiver = socket.request(concat!(stringify!($name), "_sync_get_list_data"), vec![]).await;
-            let resp = receiver.await.unwrap();
+            let callback = socket.request(concat!(stringify!($name), "_sync_get_list_data"), vec![]).await;
+            let resp = callback.await.unwrap();
             let client_data = resp.get_data().unwrap();
 
             if let Some(snapshot) = user_space.$name.get_snapshot(&socket.client_id).await {
@@ -31,7 +31,7 @@ macro_rules! sync_once_for {
 
             // Used to prompt the client to start performing incremental sync
             // after manual sync is completed
-            socket.request(concat!(stringify!($name), "_sync_finished"), vec![]).await;
+            socket.post(concat!(stringify!($name), "_sync_finished"), vec![]).await;
             paste! {
                 socket.[<$name _ready>]();
             }
@@ -39,7 +39,7 @@ macro_rules! sync_once_for {
 
         #[inline]
         async fn set_client_data(socket: &SocketContext, data: &serde_json::Value) {
-            socket.request(concat!(stringify!($name), "_sync_set_list_data"), vec![data.clone()]).await;
+            socket.post(concat!(stringify!($name), "_sync_set_list_data"), vec![data.clone()]).await;
         }
 
         const TYPE: DataType = paste!(DataType::[<$name:upper>]);
@@ -54,8 +54,8 @@ macro_rules! sync_once_for {
 
         #[inline]
         async fn get_client_md5(socket: &SocketContext) -> MD5 {
-            let receiver = socket.request(concat!(stringify!($name), "_sync_get_md5"), vec![]).await;
-            let resp = receiver.await.unwrap();
+            let callback = socket.request(concat!(stringify!($name), "_sync_get_md5"), vec![]).await;
+            let resp = callback.await.unwrap();
             let hex_str = resp.get_data::<String>().unwrap();
             hex_to_md5(&hex_str)
         }

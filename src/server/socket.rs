@@ -1,18 +1,23 @@
 use crate::data::DataType;
-use crate::{data::{config::CONFIG, user::DeviceInfo, ClientId, SnapshotKey, Username}, server::SERVER_CONTEXT, utils::{gzip_base64, ungzip_base64}, Subscriber, Broadcaster, ServerState};
+use crate::{
+    Broadcaster, ServerState, Subscriber,
+    data::{ClientId, SnapshotKey, Username, config::CONFIG, user::DeviceInfo},
+    server::SERVER_CONTEXT,
+    utils::{gzip_base64, ungzip_base64},
+};
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use dto::{EnabledFeatures, Req, Resp};
-use futures_util::{stream::SplitSink, stream::SplitStream, SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
 use log::{info, trace};
 use serde_json::json;
 use std::fmt::Formatter;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinSet;
 use tokio::time::interval;
 
@@ -23,7 +28,7 @@ pub(super) struct SocketContext {
     sender: Arc<Mutex<Sender>>,
     list_ready: Arc<AtomicBool>,
     dislike_ready: Arc<AtomicBool>,
-    handlers: Arc<DashMap<String, oneshot::Sender<Resp>>>,
+    callbacks: Arc<DashMap<String, oneshot::Sender<Resp>>>,
     broadcaster: Broadcaster,
     pub(super) client_id: ClientId,
     pub(crate) username: Username,
@@ -43,7 +48,7 @@ impl SocketContext {
             sender: Arc::new(Mutex::new(sender)),
             list_ready: Default::default(),
             dislike_ready: Default::default(),
-            handlers: Default::default(), // TODO A more efficient CallbackManager (make id usize & use vec)
+            callbacks: Default::default(), // TODO A more efficient CallbackManager (make id usize & use vec)
             broadcaster,
             client_id: device_info.client_id.clone(),
             username,
@@ -60,6 +65,20 @@ impl SocketContext {
         self.dislike_ready.store(true, Ordering::Relaxed);
     }
 
+    /// Send a request, returns: the callback
+    ///
+    /// # Arguments
+    ///
+    /// * `name`: the request name
+    /// * `data`: the exact data to send
+    ///
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let callback = socket_context.request("get", vec![json!("data")]).await; 
+    /// let resp = callback.await.unwrap();
+    /// ```
     pub(crate) async fn request(
         &self,
         name: &str,
@@ -68,18 +87,31 @@ impl SocketContext {
         trace!("request: {}", name);
         let (key, req) = Req::new(name, data);
         let text = req.to_json();
-        let message = if text.len() > 1024 {
-            Message::Text(format!("cg_{}", gzip_base64(text)).into())
-        } else {
-            Message::Text(text.into())
-        };
+        let message = Self::zip_req(text);
         {
             let mut lock = self.sender.lock().await;
             lock.send(message).await.expect("Failed to send message");
         }
         let (tx, rx) = oneshot::channel();
-        self.handlers.insert(key, tx);
+        self.callbacks.insert(key, tx);
         rx
+    }
+
+    pub(crate) async fn post(&self, name: &str, data: Vec<serde_json::Value>) {
+        trace!("request without callback: {}", name);
+        let (_, req) = Req::new(name, data);
+        let text = req.to_json();
+        let message = Self::zip_req(text);
+        let mut lock = self.sender.lock().await;
+        lock.send(message).await.expect("Failed to send message");
+    }
+
+    fn zip_req(req: String) -> Message {
+        if req.len() > 1024 {
+            Message::Text(format!("cg_{}", gzip_base64(req)).into())
+        } else {
+            Message::Text(req.into())
+        }
     }
 
     pub(crate) fn on_message_string(&self, resp: &[u8]) {
@@ -87,7 +119,9 @@ impl SocketContext {
             Ok(json) => json,
             Err(_) => todo!("handle req"),
         };
-        if let Some((_, tx)) = self.handlers.remove(json.get_name()) {
+        if let Some((_, tx)) = self.callbacks.remove(json.get_name())
+            && !tx.is_closed()
+        {
             tx.send(json).unwrap();
         }
     }
@@ -179,7 +213,7 @@ async fn handle_broadcast(context: SocketContext, mut rx: Subscriber) {
             continue;
         }
 
-        context.request(name, vec![data]).await;
+        context.post(name, vec![data]).await;
 
         // already checked in main
         let user_space = SERVER_CONTEXT.get_user_space(context.username).unwrap();
@@ -201,7 +235,7 @@ async fn handle_broadcast(context: SocketContext, mut rx: Subscriber) {
 }
 
 async fn sync_once(context: SocketContext) {
-    let receiver = context
+    let callback = context
         .request(
             "getEnabledFeatures",
             vec![
@@ -213,7 +247,7 @@ async fn sync_once(context: SocketContext) {
             ],
         )
         .await;
-    let resp = receiver.await.unwrap();
+    let resp = callback.await.unwrap();
     let enabled_features = resp.get_data::<EnabledFeatures>().unwrap();
     assert_eq!(enabled_features, EnabledFeatures::DEFAULT);
 
@@ -225,7 +259,7 @@ async fn sync_once(context: SocketContext) {
         .unwrap()
         .add_music_location;
     super::sync::sync_once(&context, user_space, add_location).await;
-    context.request("finished", vec![]).await;
+    context.post("finished", vec![]).await;
 }
 
 pub(crate) async fn handle_socket(
