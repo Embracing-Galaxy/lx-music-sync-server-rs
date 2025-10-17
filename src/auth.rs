@@ -6,7 +6,7 @@ use crate::utils::crypto::{
     aes_decrypt_with_base64, aes_encrypt_with_base64, md5_to_hex, rsa_encrypt_with_base64, to_md5,
 };
 use base64::prelude::{Engine, BASE64_STANDARD};
-use log::{info, trace};
+use log::info;
 
 const AUTH_HEAD: &str = "lx-music auth::";
 const AUTH_HEAD_LENGTH: usize = AUTH_HEAD.len();

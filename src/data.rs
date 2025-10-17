@@ -58,7 +58,7 @@ impl SnapshotInfo {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) enum DataType {
     LIST,
     DISLIKE,
