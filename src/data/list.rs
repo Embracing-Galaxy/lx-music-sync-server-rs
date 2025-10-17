@@ -1,123 +1,8 @@
-use crate::data::{config::AddMusicLocation, ClientId};
-use crate::utils::{
-    crypto::{md5_to_hex, to_md5, MD5},
-    load_or_create, now_ms,
-};
+use crate::data::config::AddMusicLocation;
 use music::*;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
-
-type SnapshotKey = MD5;
-
-pub(super) struct ListDataManager {
-    path: Box<Path>,
-    info_path: Box<Path>,
-    snapshot_info: SnapshotInfo,
-    current_list_data: ListData,
-}
-
-impl ListDataManager {
-    pub(super) fn new(user_path: &Path) -> Self {
-        // FIXME leads to list/list and dislike/list
-        let path = user_path.join("list");
-        let info_path = path.join("snapshotInfo.json");
-        let snapshot_info: SnapshotInfo = load_or_create(&info_path);
-        Self {
-            current_list_data: match snapshot_info.latest_key {
-                None => ListData::default(),
-                Some(key) => Self::get_snapshot_from_key(&path, &key).unwrap_or_default(),
-            },
-            path: path.into_boxed_path(),
-            info_path: info_path.into_boxed_path(),
-            snapshot_info,
-        }
-    }
-
-    /// Get the snapshot of the last sync of the given client
-    pub(super) fn get_snapshot(&self, client_id: &ClientId) -> Option<ListData> {
-        let key = self.snapshot_info.clients.get(client_id)?;
-        Self::get_snapshot_from_key(&self.path, &key)
-    }
-
-    fn get_snapshot_from_key(user_path: &Path, key: &SnapshotKey) -> Option<ListData> {
-        let bytes = std::fs::read(user_path.join(md5_to_hex(key, 32))).ok()?;
-        serde_json::from_slice(&bytes).ok()
-    }
-
-    pub(super) fn get_info_key(&mut self) -> SnapshotKey {
-        match self.snapshot_info.latest_key {
-            None => self.create_snapshot(),
-            Some(latest) => latest.clone(),
-        }
-    }
-
-    pub(super) fn get_snapshot_key(&self, client_id: &ClientId) -> Option<&SnapshotKey> {
-        self.snapshot_info.clients.get(client_id)
-    }
-
-    pub(super) fn create_snapshot(&mut self) -> SnapshotKey {
-        let bytes = serde_json::to_vec(&self.current_list_data).unwrap();
-        let key = to_md5(&bytes);
-        let snapshot_info = &self.snapshot_info;
-        if let Some(latest_key) = snapshot_info.latest_key
-            && latest_key == key
-        {
-            return key;
-        }
-
-        if !self.snapshot_info.saved_keys.insert(key) {
-            let path = self.path.join(md5_to_hex(&key, 32));
-            let data = serde_json::to_vec(&self.current_list_data).unwrap();
-            tokio::spawn(tokio::fs::write(path, data));
-        };
-
-        self.snapshot_info.time = now_ms();
-        self.snapshot_info.latest_key = Some(key);
-        let path = self.info_path.to_owned();
-        let data = serde_json::to_vec(&self.snapshot_info).unwrap();
-        tokio::spawn(tokio::fs::write(path, data));
-
-        key
-    }
-
-    pub(super) fn merge(
-        &mut self,
-        client_id: &ClientId,
-        client: &ListData,
-        snapshot: &ListData,
-        add_location: &AddMusicLocation,
-    ) -> Vec<u8> {
-        self.current_list_data.merge(client, snapshot, add_location);
-        let bytes = serde_json::to_vec(&self.current_list_data).unwrap();
-        self.update_snapshot_key(client_id, to_md5(&bytes));
-        bytes
-    }
-
-    pub(super) fn overwrite(&mut self, client_id: &ClientId, data: ListData) {
-        let bytes = serde_json::to_vec(&data).unwrap();
-        self.update_snapshot_key(client_id, to_md5(&bytes));
-        self.current_list_data = data;
-    }
-
-    pub(super) fn update_snapshot_key(&mut self, client_id: &ClientId, key: SnapshotKey) {
-        self.snapshot_info.update(client_id, key);
-    }
-}
-
-#[derive(Clone, Default, Deserialize, Serialize)]
-struct SnapshotInfo {
-    latest_key: Option<SnapshotKey>,
-    time: u128,
-    saved_keys: HashSet<SnapshotKey>,
-    clients: HashMap<ClientId, SnapshotKey>,
-}
-
-impl SnapshotInfo {
-    fn update(&mut self, client_id: &ClientId, key: SnapshotKey) {
-        self.clients.insert(client_id.clone(), key);
-    }
-}
+use crate::data::Data;
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub(crate) struct ListData {
@@ -130,17 +15,21 @@ pub(crate) struct ListData {
 }
 
 impl ListData {
-    pub(crate) fn is_empty(&self) -> bool {
-        self.default.is_empty() && self.love.is_empty() && self.custom_lists.is_empty()
-    }
-
+    #[inline]
     fn build_custom_map(&self) -> HashMap<u64, &CustomList> {
         self.custom_lists
             .iter()
             .map(|list| (list.id, list))
             .collect()
     }
+}
 
+impl Data for ListData {
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.default.is_empty() && self.love.is_empty() && self.custom_lists.is_empty()
+    }
+    
     /// It may be a bit ugly here,
     /// but it's not a hot spot because it's only called once when the socket is connected.
     fn merge(&mut self, client: &Self, snapshot: &Self, add_location: &AddMusicLocation) {
@@ -239,6 +128,7 @@ fn deserialize_list_id<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error
 }
 
 impl CustomList {
+    #[inline]
     fn merge(&self, client_list: &Self, add_location: &AddMusicLocation) -> Self {
         CustomList {
             id: self.id,
@@ -250,6 +140,7 @@ impl CustomList {
         }
     }
 
+    #[inline]
     fn merge_with_snapshot(
         &self,
         client_list: &Self,
@@ -362,8 +253,8 @@ mod music {
 
 #[cfg(test)]
 mod tests {
-    use serde::de::value::{Error, StrDeserializer};
     use super::deserialize_list_id;
+    use serde::de::value::{Error, StrDeserializer};
 
     #[test]
     fn deserialize_custom_list_id() {

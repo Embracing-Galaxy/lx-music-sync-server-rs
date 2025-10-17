@@ -1,5 +1,5 @@
 use crate::auth::{auth_by_code, auth_by_key};
-use crate::data::{ClientId, SERVER_ID_PREFIX, SERVER_INFO};
+use crate::data::{ClientId, DataType, SnapshotKey, SERVER_ID_PREFIX, SERVER_INFO};
 use crate::server::{socket::handle_socket, SERVER_CONTEXT};
 use axum::extract::State;
 use axum::{
@@ -15,7 +15,7 @@ use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tokio::sync::oneshot;
+use tokio::sync::{broadcast, oneshot};
 
 mod auth;
 mod data;
@@ -60,12 +60,22 @@ struct SocketInfo {
     t: String,
 }
 type ConnectionMap = Arc<DashMap<ClientId, oneshot::Sender<()>>>;
+type BroadcastMsg = (
+    ClientId,
+    &'static str, // Req name
+    serde_json::Value,
+    DataType,
+    SnapshotKey,
+);
+type Broadcaster = broadcast::Sender<BroadcastMsg>;
+type Subscriber = broadcast::Receiver<BroadcastMsg>;
+type ServerState = (ConnectionMap, Broadcaster);
 
 /// Websocket handshake entrypoint
 async fn websocket(
     ws: WebSocketUpgrade,
     Query(query): Query<SocketInfo>,
-    State(connections): State<ConnectionMap>,
+    State(socket_state): State<ServerState>,
 ) -> Response {
     let client_id = &query.i;
     let (username, user_space) = if let Some(username) = SERVER_CONTEXT.get_username(client_id)
@@ -79,7 +89,7 @@ async fn websocket(
     let Some(device_info) = user_space.get_client_device_info(client_id).await else {
         return (StatusCode::BAD_REQUEST, "missing ?i=clientId").into_response();
     };
-    ws.on_upgrade(|socket| handle_socket(socket, username, device_info, connections))
+    ws.on_upgrade(|socket| handle_socket(socket, username, device_info, socket_state))
 }
 
 async fn fallback() -> (StatusCode, &'static str) {
@@ -96,6 +106,7 @@ async fn main() -> std::io::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
     SERVER_CONTEXT.start_daemon();
     let connections = ConnectionMap::default();
+    let (tx, _) = broadcast::channel(16);
 
     // build our application with a route
     let app = Router::new()
@@ -104,7 +115,7 @@ async fn main() -> std::io::Result<()> {
         .route("/hello", get(hello))
         .route("/socket", get(websocket))
         .fallback(fallback)
-        .with_state(connections)
+        .with_state((connections, tx))
         .into_make_service_with_connect_info::<SocketAddr>();
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9527));

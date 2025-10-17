@@ -1,14 +1,9 @@
-use crate::{
-    data::{user::DeviceInfo, ClientId, Username},
-    server::dto::{EnabledFeatures, Req, Resp},
-    server::sync::sync_list_once,
-    utils::{gzip_base64, ungzip_base64},
-    ConnectionMap,
-};
+use crate::data::DataType;
+use crate::{data::{config::CONFIG, user::DeviceInfo, ClientId, SnapshotKey, Username}, server::SERVER_CONTEXT, utils::{gzip_base64, ungzip_base64}, Subscriber, Broadcaster, ServerState};
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
-use futures_util::stream::SplitStream;
-use futures_util::{stream::SplitSink, SinkExt, StreamExt};
+use dto::{EnabledFeatures, Req, Resp};
+use futures_util::{stream::SplitSink, stream::SplitStream, SinkExt, StreamExt};
 use log::{info, trace};
 use serde_json::json;
 use std::fmt::Formatter;
@@ -21,11 +16,15 @@ use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinSet;
 use tokio::time::interval;
 
+mod dto;
+
 #[derive(Clone)]
 pub(super) struct SocketContext {
     sender: Arc<Mutex<Sender>>,
     list_ready: Arc<AtomicBool>,
+    dislike_ready: Arc<AtomicBool>,
     handlers: Arc<DashMap<String, oneshot::Sender<Resp>>>,
+    broadcaster: Broadcaster,
     pub(super) client_id: ClientId,
     pub(crate) username: Username,
 }
@@ -34,18 +33,31 @@ type Sender = SplitSink<WebSocket, Message>;
 type Receiver = SplitStream<WebSocket>;
 
 impl SocketContext {
-    pub(crate) fn new(sender: Sender, device_info: &DeviceInfo, username: Username) -> Self {
+    pub(crate) fn new(
+        sender: Sender,
+        broadcaster: Broadcaster,
+        device_info: &DeviceInfo,
+        username: Username,
+    ) -> Self {
         Self {
             sender: Arc::new(Mutex::new(sender)),
             list_ready: Default::default(),
+            dislike_ready: Default::default(),
             handlers: Default::default(), // TODO A more efficient CallbackManager (make id usize & use vec)
+            broadcaster,
             client_id: device_info.client_id.clone(),
             username,
         }
     }
 
+    #[inline]
     pub(crate) fn list_ready(&self) {
         self.list_ready.store(true, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub(crate) fn dislike_ready(&self) {
+        self.dislike_ready.store(true, Ordering::Relaxed);
     }
 
     pub(crate) async fn request(
@@ -80,8 +92,24 @@ impl SocketContext {
         }
     }
 
-    pub(crate) async fn broadcast_sync_result(&self) {
-        todo!("rewrite")
+    pub(crate) async fn broadcast_sync_result(
+        &self,
+        data_type: DataType,
+        data: serde_json::Value,
+        key: SnapshotKey,
+    ) {
+        self.broadcaster
+            .send((
+                self.client_id.clone(),
+                match data_type {
+                    DataType::LIST => "onListSyncAction",
+                    DataType::DISLIKE => "onDislikeSyncAction",
+                },
+                data,
+                data_type,
+                key,
+            ))
+            .expect("Failed to broadcast sync result");
     }
 
     async fn on_list_sync_action(&self) {
@@ -145,6 +173,33 @@ async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Ar
     }
 }
 
+async fn handle_broadcast(context: SocketContext, mut rx: Subscriber) {
+    while let Ok((client_id, name, data, data_type, key)) = rx.recv().await {
+        if context.client_id == client_id {
+            continue;
+        }
+
+        context.request(name, vec![data]).await;
+
+        // already checked in main
+        let user_space = SERVER_CONTEXT.get_user_space(context.username).unwrap();
+        match data_type {
+            DataType::LIST => {
+                user_space
+                    .list
+                    .update_snapshot_key(&context.client_id, key)
+                    .await
+            }
+            DataType::DISLIKE => {
+                user_space
+                    .dislike
+                    .update_snapshot_key(&context.client_id, key)
+                    .await
+            }
+        }
+    }
+}
+
 async fn sync_once(context: SocketContext) {
     let receiver = context
         .request(
@@ -161,15 +216,23 @@ async fn sync_once(context: SocketContext) {
     let resp = receiver.await.unwrap();
     let enabled_features = resp.get_data::<EnabledFeatures>().unwrap();
     assert_eq!(enabled_features, EnabledFeatures::DEFAULT);
-    sync_list_once(&context).await;
-    // TODO sync dislike & send `finished`
+
+    // already checked in main
+    let user_space = SERVER_CONTEXT.get_user_space(context.username).unwrap();
+    let add_location = &CONFIG
+        .user_configs
+        .get(context.username)
+        .unwrap()
+        .add_music_location;
+    super::sync::sync_once(&context, user_space, add_location).await;
+    context.request("finished", vec![]).await;
 }
 
 pub(crate) async fn handle_socket(
     socket: WebSocket,
     username: Username,
     device_info: Arc<DeviceInfo>,
-    connections: ConnectionMap,
+    (connections, broadcaster): ServerState,
 ) {
     let (close_tx, close_rx) = oneshot::channel(); // channel to send close signal
 
@@ -182,7 +245,8 @@ pub(crate) async fn handle_socket(
     info!("User {username} on device {device_name} connected");
 
     let (sender, receiver) = socket.split();
-    let socket_context = SocketContext::new(sender, &device_info, username);
+    let broadcast_rx = broadcaster.subscribe();
+    let socket_context = SocketContext::new(sender, broadcaster, &device_info, username);
 
     let flag = Arc::new(AtomicBool::new(true));
     let context = socket_context.clone();
@@ -197,7 +261,9 @@ pub(crate) async fn handle_socket(
     let message_handle = tokio::spawn(on_message(context, receiver, got_pong));
 
     let context = socket_context.clone();
-    tasks.spawn(sync_once(context));
+    tasks.spawn(handle_broadcast(context, broadcast_rx));
+
+    tasks.spawn(sync_once(socket_context));
     tokio::select! {
         _ = message_handle => {},
         _ = close_rx => {},

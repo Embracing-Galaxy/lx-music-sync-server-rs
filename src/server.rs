@@ -10,7 +10,6 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use tokio::time::interval;
 
-mod dto;
 pub(crate) mod socket;
 mod sync;
 

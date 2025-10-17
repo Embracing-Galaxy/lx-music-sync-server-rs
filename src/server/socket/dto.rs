@@ -24,7 +24,7 @@ impl Req {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct Resp {
+pub(in crate::server) struct Resp {
     /// the response event name, the same as the corresponding request name
     name: String,
     error: Option<String>,
@@ -32,11 +32,11 @@ pub(crate) struct Resp {
 }
 
 impl Resp {
-    pub(crate) fn get_name(&self) -> &String {
+    pub(super) fn get_name(&self) -> &String {
         &self.name
     }
 
-    pub(crate) fn get_data<T: serde::de::DeserializeOwned>(self) -> Option<T> {
+    pub(in crate::server) fn get_data<T: serde::de::DeserializeOwned>(self) -> Option<T> {
         if let Some(err) = self.error {
             panic!("client response with err: {err}");
         }
@@ -52,13 +52,13 @@ impl Resp {
 #[derive(Debug, Deserialize, PartialEq)]
 pub(crate) struct EnabledFeatures {
     #[serde(default, deserialize_with = "de_false_or_struct")]
-    pub(super) list: Option<ListConfig>,
+    pub(in crate::server) list: Option<ListConfig>,
     #[serde(default, deserialize_with = "de_false_or_struct")]
-    pub(super) dislike: Option<ListConfig>,
+    pub(in crate::server) dislike: Option<ListConfig>,
 }
 
 impl EnabledFeatures {
-    pub(super) const DEFAULT: EnabledFeatures = EnabledFeatures {
+    pub(in crate::server) const DEFAULT: EnabledFeatures = EnabledFeatures {
         list: Some(ListConfig {
             skip_snapshot: false,
         }),
@@ -69,9 +69,9 @@ impl EnabledFeatures {
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
-pub(super) struct ListConfig {
+pub(in crate::server) struct ListConfig {
     #[serde(rename = "skipSnapshot")]
-    pub(super) skip_snapshot: bool,
+    pub(in crate::server) skip_snapshot: bool,
 }
 
 /// custom Option<T> deserialization: false -> None，object -> Some(T)

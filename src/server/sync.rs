@@ -1,74 +1,21 @@
-use crate::data::config::CONFIG;
-use crate::data::{list::ListData, user::UserSpace};
-use crate::server::{socket::SocketContext, SERVER_CONTEXT};
-use crate::utils::crypto::{hex_to_md5, MD5};
+use crate::data::config::AddMusicLocation;
+use crate::data::user::UserSpace;
+use crate::server::socket::SocketContext;
 
-pub(super) async fn sync_list_once(socket: &SocketContext) {
-    // already checked in main
-    let user_space = SERVER_CONTEXT.get_user_space(socket.username).unwrap();
-    let add_location = &CONFIG
-        .user_configs
-        .get(socket.username)
-        .unwrap()
-        .add_music_location;
-
-    let client_data = get_client_list_data(socket).await;
-
-    if let Some(snapshot) = user_space.get_snapshot(&socket.client_id).await {
-        if !list_latest(socket, &user_space).await {
-            let new_list_data = user_space
-                .merge_list(&socket.client_id, &client_data, &snapshot, add_location)
-                .await;
-            set_client_list(socket, &new_list_data).await;
-        }
-    } else if !client_data.is_empty() {
-        user_space
-            .overwrite_list(&socket.client_id, client_data)
-            .await;
-    }
-
-    socket.broadcast_sync_result().await;
-    finished_sync(socket).await;
+pub(super) async fn sync_once(
+    socket: &SocketContext,
+    user_space: &UserSpace,
+    add_location: &AddMusicLocation,
+) {
+    list::sync_once(socket, user_space, add_location).await;
+    dislike::sync_once(socket, user_space, add_location).await;
 }
 
-/// Used to prompt the client to start performing incremental sync
-/// after manual sync is completed
-async fn finished_sync(socket: &SocketContext) {
-    socket.request("list_sync_finished", vec![]).await;
-    socket.list_ready();
+#[macro_use]
+mod template;
+mod list {
+    sync_once_for!(list);
 }
-
-async fn get_client_list_data(socket: &SocketContext) -> ListData {
-    let receiver = socket.request("list_sync_get_list_data", vec![]).await;
-    let resp = receiver.await.unwrap();
-    resp.get_data().unwrap()
-}
-
-async fn get_client_list_md5(socket: &SocketContext) -> MD5 {
-    let receiver = socket.request("list_sync_get_md5", vec![]).await;
-    let resp = receiver.await.unwrap();
-    let hex_str = resp.get_data::<String>().unwrap();
-    hex_to_md5(&hex_str)
-}
-
-async fn set_client_list(socket: &SocketContext, list_data: &Vec<u8>) {
-    let data: serde_json::Value = serde_json::from_slice(&list_data).unwrap();
-    socket.request("list_sync_set_list_data", vec![data]).await;
-}
-
-async fn list_latest(socket: &SocketContext, user_space: &UserSpace) -> bool {
-    let client_md5 = get_client_list_md5(socket).await;
-    let snapshot_key = user_space.get_snapshot_key(&socket.client_id).await;
-    let current_key = user_space.get_current_list_info_key().await;
-
-    let latest = client_md5 == current_key;
-    if latest
-        && let Some(snapshot_key) = snapshot_key
-        && snapshot_key != current_key
-    {
-        user_space
-            .update_snapshot_key(&socket.client_id, current_key)
-            .await;
-    }
-    latest
+mod dislike {
+    sync_once_for!(dislike);
 }

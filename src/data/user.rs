@@ -1,28 +1,23 @@
-use crate::data::Username;
+use crate::data::{dislike::DislikeData, list::ListData, DataManager, Username};
 use crate::server::SERVER_CONTEXT;
 use crate::utils::load_or_create;
 use crate::{
-    data::config::AddMusicLocation,
-    data::{list::ListData, list::ListDataManager, ClientId},
-    utils::{
-        crypto::{rand_16bytes_as_base64, MD5},
-        filter_file_name,
-    },
+    data::ClientId,
+    utils::{crypto::rand_16bytes_as_base64, filter_file_name},
 };
 use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
-use tokio::sync::RwLock;
 
 pub(crate) static USERS_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("users"));
 
 pub(crate) struct UserSpace {
     user_data: UserData,
-    list: RwLock<ListDataManager>,
+    pub(crate) list: DataManager<ListData>,
     #[allow(unused)]
-    dislike: RwLock<ListDataManager>,
+    pub(crate) dislike: DataManager<DislikeData>,
 }
 
 impl UserSpace {
@@ -34,8 +29,8 @@ impl UserSpace {
         let user_data = UserData::new(user_name, devices_infos, devices_file_path);
         let path = &user_data.user_path;
         Self {
-            list: RwLock::new(ListDataManager::new(&path.join("list"))),
-            dislike: RwLock::new(ListDataManager::new(&path.join("dislike"))),
+            list: DataManager::new(&path.join("list")),
+            dislike: DataManager::new(&path.join("dislike")),
             user_data,
         }
     }
@@ -61,43 +56,6 @@ impl UserSpace {
             .update_device_username_map(device_info.client_id.clone(), self.user_data.username);
         self.user_data.devices_infos.insert_device(device_info);
         self.user_data.write_devices_infos();
-    }
-
-    pub(crate) async fn merge_list(
-        &self,
-        client_id: &ClientId,
-        client: &ListData,
-        snapshot: &ListData,
-        add_location: &AddMusicLocation,
-    ) -> Vec<u8> {
-        let merged_bytes = self
-            .list
-            .write()
-            .await
-            .merge(client_id, client, snapshot, add_location);
-        self.list.write().await.create_snapshot();
-        merged_bytes
-    }
-
-    pub(crate) async fn overwrite_list(&self, client_id: &ClientId, data: ListData) {
-        self.list.write().await.overwrite(client_id, data);
-    }
-
-    /// Get the snapshot of the last sync of the given client
-    pub(crate) async fn get_snapshot(&self, client_id: &ClientId) -> Option<ListData> {
-        self.list.read().await.get_snapshot(&client_id)
-    }
-
-    pub(crate) async fn get_current_list_info_key(&self) -> MD5 {
-        self.list.write().await.get_info_key()
-    }
-
-    pub(crate) async fn get_snapshot_key(&self, client_id: &ClientId) -> Option<MD5> {
-        self.list.read().await.get_snapshot_key(client_id).cloned()
-    }
-
-    pub(crate) async fn update_snapshot_key(&self, client_id: &ClientId, key: MD5) {
-        self.list.write().await.update_snapshot_key(client_id, key);
     }
 }
 
