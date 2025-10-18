@@ -66,15 +66,15 @@ pub(crate) enum DataType {
 
 pub(crate) struct DataManager<DATA: Data> {
     path: Box<Path>,
-    info_path: Box<Path>,
+    info_path: &'static Path,
     snapshot_info: RwLock<SnapshotInfo>,
     current_data: RwLock<DATA>,
 }
 
 impl<DATA: Data> DataManager<DATA> {
     fn new(path: &Path) -> Self {
-        let info_path = path.join("snapshotInfo.json");
-        let snapshot_info: SnapshotInfo = load_or_create(&info_path);
+        let info_path = path.join("snapshotInfo.json").leak();
+        let snapshot_info: SnapshotInfo = load_or_create(info_path);
         let current_list_data = match snapshot_info.latest_key {
             None => DATA::default(),
             Some(key) => Self::get_snapshot_from_key(&path, &key).unwrap_or_default(),
@@ -82,7 +82,7 @@ impl<DATA: Data> DataManager<DATA> {
         Self {
             current_data: RwLock::new(current_list_data),
             path: path.into(),
-            info_path: info_path.into_boxed_path(),
+            info_path,
             snapshot_info: RwLock::new(snapshot_info),
         }
     }
@@ -104,7 +104,7 @@ impl<DATA: Data> DataManager<DATA> {
                 self.create_snapshot(serde_json::to_vec(&*self.current_data.read().await).unwrap())
                     .await
             }
-            Some(latest) => latest.clone(),
+            Some(latest) => latest,
         }
     }
 
@@ -132,9 +132,8 @@ impl<DATA: Data> DataManager<DATA> {
         };
         // async write snapshot info
         // TODO throttle
-        let path = self.info_path.to_owned();
         let info = serde_json::to_vec(&*self.snapshot_info.read().await).unwrap();
-        tokio::spawn(tokio::fs::write(path, info));
+        tokio::spawn(tokio::fs::write(self.info_path, info));
 
         key
     }

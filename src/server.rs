@@ -28,12 +28,12 @@ impl ServerContext {
         let mut user_space_map = HashMap::new();
         for username in CONFIG.user_configs.keys() {
             let user_path = USERS_PATH.join(username);
-            let devices_infos_path = user_path.join("devices.json");
-            let infos = DevicesInfos::load(&devices_infos_path);
+            let devices_infos_path = user_path.join("devices.json").leak();
+            let infos = DevicesInfos::load(devices_infos_path);
             infos.register_each_device(&mut device_user_map, &username);
             user_space_map.insert(
                 username.as_str(),
-                UserSpace::new(username, user_path.into(), infos, devices_infos_path.into()),
+                UserSpace::new(username, user_path.into(), infos, devices_infos_path),
             );
         }
         Self {
@@ -70,7 +70,7 @@ impl ServerContext {
     }
 
     /// get the corresponding username
-    pub(crate) fn get_username(&self, client_id: &ClientId) -> Option<&str> {
+    pub(crate) fn get_username(&self, client_id: &ClientId) -> Option<Username> {
         self.device_username_map.load().get(client_id).cloned()
     }
 

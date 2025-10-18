@@ -24,8 +24,8 @@ impl UserSpace {
     pub(crate) fn new(
         user_name: Username,
         user_path: Box<Path>,
-        devices_infos: DevicesInfos,
-        devices_file_path: Arc<Path>,
+        devices_infos: &'static DevicesInfos,
+        devices_file_path: &'static Path,
     ) -> Self {
         let user_data = UserData::new(user_name, user_path, devices_infos, devices_file_path);
         let path = &user_data.user_path;
@@ -63,30 +63,28 @@ impl UserSpace {
 struct UserData {
     username: Username,
     user_path: Box<Path>,
-    devices_file_path: Arc<Path>,
-    devices_infos: Arc<DevicesInfos>,
+    devices_file_path: &'static Path,
+    devices_infos: &'static DevicesInfos,
 }
 
 impl UserData {
     fn new(
         username: Username,
         user_path: Box<Path>,
-        device_infos: DevicesInfos,
-        devices_file_path: Arc<Path>,
+        devices_infos: &'static DevicesInfos,
+        devices_file_path: &'static Path,
     ) -> Self {
         Self {
             username,
             user_path,
             devices_file_path,
-            devices_infos: Arc::new(device_infos),
+            devices_infos,
         }
     }
 
     /// Write `devices_infos` to file without await
     fn write_devices_infos(&self) {
-        let path = self.devices_file_path.clone();
-        let devices_infos = self.devices_infos.clone();
-        tokio::spawn(tokio::fs::write(path, devices_infos.serialize()));
+        tokio::spawn(tokio::fs::write(self.devices_file_path, self.devices_infos.serialize()));
     }
 }
 
@@ -95,17 +93,18 @@ pub(crate) struct DevicesInfos {
 }
 
 impl DevicesInfos {
-    pub(crate) fn load(path: impl AsRef<Path>) -> Self {
+    pub(crate) fn load(path: &Path) -> &'static Self {
         let deserialized: Vec<DeviceInfo> = load_or_create(path.as_ref());
 
-        Self {
+        let result =  Self {
             clients: ArcSwap::from_pointee(
                 deserialized
                     .into_iter()
                     .map(|info| (info.client_id.clone(), Arc::new(info)))
                     .collect(),
             ),
-        }
+        };
+        unsafe { std::mem::transmute(result) }
     }
 
     pub(crate) fn register_each_device(
