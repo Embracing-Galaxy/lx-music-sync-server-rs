@@ -13,6 +13,7 @@ pub(super) async fn sync_once(
 
 #[macro_use]
 mod template;
+
 mod list {
     sync_once_for!(list);
 }

@@ -1,27 +1,30 @@
 use crate::data::DataType;
+use crate::server::socket::dto::IncomingMsg;
 use crate::{
-    Broadcaster, ServerState, Subscriber,
-    data::{ClientId, SnapshotKey, Username, config::CONFIG, user::DeviceInfo},
-    server::SERVER_CONTEXT,
-    utils::{gzip_base64, ungzip_base64},
+    data::{config::CONFIG, user::DeviceInfo, ClientId, SnapshotKey, Username}, server::SERVER_CONTEXT, utils::{gzip_base64, ungzip_base64},
+    Broadcaster,
+    ServerState,
+    Subscriber,
 };
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
-use dto::{EnabledFeatures, Req, Resp};
-use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
+use futures_util::{stream::SplitSink, stream::SplitStream, SinkExt, StreamExt};
 use log::{info, trace};
 use serde_json::json;
 use std::fmt::Formatter;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinSet;
 use tokio::time::interval;
+use {
+    dto::{EnabledFeatures, Req, Resp},
+    handler::{on_dislike_sync, on_list_sync},
+};
 
 mod dto;
+mod handler;
 
 #[derive(Clone)]
 pub(super) struct SocketContext {
@@ -114,15 +117,27 @@ impl SocketContext {
         }
     }
 
-    pub(crate) fn on_message_string(&self, resp: &[u8]) {
-        let json = match serde_json::from_slice::<Resp>(resp) {
-            Ok(json) => json,
-            Err(_) => todo!("handle req"),
-        };
-        if let Some((_, tx)) = self.callbacks.remove(json.get_name())
-            && !tx.is_closed()
-        {
-            tx.send(json).unwrap();
+    pub(crate) fn on_message_string(&self, msg: &[u8]) {
+        match serde_json::from_slice::<IncomingMsg>(msg) {
+            Ok(msg) => match msg {
+                IncomingMsg::Req(req) => {
+                    // already checked in main
+                    let user_space = SERVER_CONTEXT.get_user_space(self.username).unwrap();
+                    match req.name.as_str() {
+                        "onListSyncAction" => on_list_sync(&self.list_ready, user_space),
+                        "onDislikeSyncAction" => on_dislike_sync(&self.dislike_ready, user_space),
+                        _ => todo!("unsupported"),
+                    }
+                }
+                IncomingMsg::Resp(resp) => {
+                    if let Some((_, tx)) = self.callbacks.remove(&resp.name)
+                        && !tx.is_closed()
+                    {
+                        tx.send(resp).unwrap();
+                    }
+                }
+            },
+            Err(_) => todo!("on err"),
         }
     }
 

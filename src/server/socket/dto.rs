@@ -1,9 +1,16 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::any::type_name;
 
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(super) enum IncomingMsg {
+    Req(Req),
+    Resp(Resp),
+}
+
 #[derive(Deserialize, Serialize)]
 pub(super) struct Req {
-    name: String,
+    pub(super) name: String,
     path: Vec<String>,
     data: serde_json::Value,
 }
@@ -26,16 +33,12 @@ impl Req {
 #[derive(Debug, Deserialize)]
 pub(in crate::server) struct Resp {
     /// the response event name, the same as the corresponding request name
-    name: String,
+    pub(super) name: String,
     error: Option<String>,
     data: Option<serde_json::Value>,
 }
 
 impl Resp {
-    pub(super) fn get_name(&self) -> &String {
-        &self.name
-    }
-
     pub(in crate::server) fn get_data<T: serde::de::DeserializeOwned>(self) -> Option<T> {
         if let Some(err) = self.error {
             panic!("client response with err: {err}");
@@ -50,15 +53,15 @@ impl Resp {
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
-pub(crate) struct EnabledFeatures {
+pub(in crate::server) struct EnabledFeatures {
     #[serde(default, deserialize_with = "de_false_or_struct")]
-    pub(in crate::server) list: Option<ListConfig>,
+    list: Option<ListConfig>,
     #[serde(default, deserialize_with = "de_false_or_struct")]
-    pub(in crate::server) dislike: Option<ListConfig>,
+    dislike: Option<ListConfig>,
 }
 
 impl EnabledFeatures {
-    pub(in crate::server) const DEFAULT: EnabledFeatures = EnabledFeatures {
+    pub(super) const DEFAULT: EnabledFeatures = EnabledFeatures {
         list: Some(ListConfig {
             skip_snapshot: false,
         }),
@@ -69,13 +72,13 @@ impl EnabledFeatures {
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
-pub(in crate::server) struct ListConfig {
+struct ListConfig {
     #[serde(rename = "skipSnapshot")]
-    pub(in crate::server) skip_snapshot: bool,
+    skip_snapshot: bool,
 }
 
 /// custom Option<T> deserialization: false -> None，object -> Some(T)
-pub fn de_false_or_struct<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+fn de_false_or_struct<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,

@@ -1,8 +1,8 @@
-use crate::data::config::AddMusicLocation;
-use music::*;
+use crate::data::{config::AddMusicLocation, Data};
+pub(crate) use music::MusicInfo;
+use music::MusicSource;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{HashMap, HashSet};
-use crate::data::Data;
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub(crate) struct ListData {
@@ -19,7 +19,7 @@ impl ListData {
     fn build_custom_map(&self) -> HashMap<u64, &CustomList> {
         self.custom_lists
             .iter()
-            .map(|list| (list.id, list))
+            .map(|list| (list.id(), list))
             .collect()
     }
 }
@@ -29,7 +29,7 @@ impl Data for ListData {
     fn is_empty(&self) -> bool {
         self.default.is_empty() && self.love.is_empty() && self.custom_lists.is_empty()
     }
-    
+
     /// It may be a bit ugly here,
     /// but it's not a hot spot because it's only called once when the socket is connected.
     fn merge(&mut self, client: &Self, snapshot: &Self, add_location: &AddMusicLocation) {
@@ -39,7 +39,7 @@ impl Data for ListData {
         let deleted_ids: HashSet<u64> = snapshot
             .custom_lists
             .iter()
-            .map(|list| list.id)
+            .map(CustomList::id)
             .filter(|id| {
                 !current_custom_map.contains_key(id) || !client_custom_map.contains_key(id)
             })
@@ -48,12 +48,12 @@ impl Data for ListData {
         let mut custom_lists = Vec::new();
 
         for current_list in self.custom_lists.iter() {
-            if deleted_ids.contains(&current_list.id) {
+            if deleted_ids.contains(&current_list.id()) {
                 continue;
             }
 
-            let merged_list = match client_custom_map.get(&current_list.id) {
-                Some(&client_list) => match snapshot_custom_map.get(&current_list.id) {
+            let merged_list = match client_custom_map.get(&current_list.id()) {
+                Some(&client_list) => match snapshot_custom_map.get(&current_list.id()) {
                     None => current_list.merge(client_list, add_location),
                     Some(&snapshot_list) => {
                         current_list.merge_with_snapshot(client_list, snapshot_list, add_location)
@@ -65,14 +65,14 @@ impl Data for ListData {
         }
 
         for (index, client_list) in client.custom_lists.iter().enumerate() {
-            if deleted_ids.contains(&client_list.id) {
+            if deleted_ids.contains(&client_list.id()) {
                 continue;
             }
-            let client_update_time = client_list.location_update_time.unwrap_or(0);
+            let client_update_time = client_list.info.location_update_time.unwrap_or(0);
 
             match custom_lists
                 .iter()
-                .position(|list| list.id == client_list.id)
+                .position(|list| list.id() == client_list.id())
             {
                 None => {
                     if client_update_time > 0 {
@@ -83,6 +83,7 @@ impl Data for ListData {
                 }
                 Some(current_list_index) => {
                     let current_update_time = custom_lists[current_list_index]
+                        .info
                         .location_update_time
                         .unwrap_or(0);
                     if current_update_time >= client_update_time {
@@ -90,7 +91,7 @@ impl Data for ListData {
                     }
                     // TODO optimize!
                     let mut current_list = custom_lists.remove(current_list_index);
-                    current_list.location_update_time = Some(current_update_time);
+                    current_list.info.location_update_time = Some(current_update_time);
                     custom_lists.insert(index, current_list);
                 }
             }
@@ -109,17 +110,23 @@ impl Data for ListData {
 
 #[derive(Clone, Deserialize, Serialize)]
 struct CustomList {
-    #[serde(deserialize_with = "deserialize_list_id")]
+    #[serde(flatten)]
+    info: CustomListInfo,
+    list: Vec<MusicInfo>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+pub(crate) struct CustomListInfo {
+    #[serde(deserialize_with = "de_list_id")]
     id: u64,
     name: String,
     source: Option<MusicSource>, // TODO Usually None, its role is not yet clear
     source_list_id: Option<String>,
     location_update_time: Option<u128>,
-    list: Vec<MusicInfo>,
 }
 
 /// deserialize "userlist_<some number>" to u64
-fn deserialize_list_id<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error> {
+pub(crate) fn de_list_id<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error> {
     let raw_str = String::deserialize(de)?;
     const PREFIX_LEN: usize = "userlist_".len();
     raw_str[PREFIX_LEN..]
@@ -129,13 +136,14 @@ fn deserialize_list_id<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error
 
 impl CustomList {
     #[inline]
+    fn id(&self) -> u64 {
+        self.info.id
+    }
+
+    #[inline]
     fn merge(&self, client_list: &Self, add_location: &AddMusicLocation) -> Self {
         CustomList {
-            id: self.id,
-            name: self.name.clone(),
-            source: self.source.clone(),
-            source_list_id: self.source_list_id.clone(),
-            location_update_time: self.location_update_time,
+            info: self.info.clone(),
             list: combine_without_duplication(&self.list, &client_list.list, add_location),
         }
     }
@@ -147,11 +155,20 @@ impl CustomList {
         snapshot_list: &Self,
         add_location: &AddMusicLocation,
     ) -> Self {
+        CustomList {
+            info: self.info.merge(&client_list.info, &snapshot_list.info),
+            list: combine_without_duplication(&self.list, &client_list.list, add_location),
+        }
+    }
+}
+
+impl CustomListInfo {
+    #[inline]
+    fn merge(&self, client_list: &Self, snapshot_list: &Self) -> Self {
         fn select_data<'a, T: PartialEq + Clone>(current: &'a T, client: &'a T, snapshot: &T) -> T {
             if current == snapshot { client } else { current }.clone()
         }
-
-        CustomList {
+        Self {
             id: self.id,
             name: select_data(&self.name, &client_list.name, &snapshot_list.name),
             source: select_data(&self.source, &client_list.source, &snapshot_list.source),
@@ -161,7 +178,6 @@ impl CustomList {
                 &snapshot_list.source_list_id,
             ),
             location_update_time: self.location_update_time,
-            list: combine_without_duplication(&self.list, &client_list.list, add_location),
         }
     }
 }
@@ -224,7 +240,7 @@ mod music {
     use serde::{Deserialize, Serialize};
 
     #[derive(Clone, Deserialize, Serialize)]
-    pub(super) struct MusicInfo {
+    pub(crate) struct MusicInfo {
         id: String, // only id is used in list
         name: String,
         singer: String,
@@ -253,14 +269,14 @@ mod music {
 
 #[cfg(test)]
 mod tests {
-    use super::deserialize_list_id;
+    use super::de_list_id;
     use serde::de::value::{Error, StrDeserializer};
 
     #[test]
     fn deserialize_custom_list_id() {
         let id = "userlist_12345";
         let de = StrDeserializer::<Error>::new(id);
-        let id: u64 = deserialize_list_id(de).expect("should parse");
+        let id: u64 = de_list_id(de).expect("should parse");
         assert_eq!(id, 12345);
     }
 }
