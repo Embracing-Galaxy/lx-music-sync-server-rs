@@ -1,4 +1,5 @@
-use crate::data::{config::AddMusicLocation, Data};
+use crate::data::config::AddMusicLocation;
+use crate::data::manager::Data;
 use std::collections::HashSet;
 
 pub(crate) type DislikeData = String;
@@ -14,6 +15,7 @@ impl Data for DislikeData {
         let client = client.lines().collect::<HashSet<_>>();
         let snapshot = snapshot.lines().collect::<HashSet<_>>();
 
+        // assert that the format is correct
         *self = current
             .union(&client)
             .filter(|&rule| {

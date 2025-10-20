@@ -72,11 +72,13 @@ fn de_list_ids<'de, D: Deserializer<'de>>(de: D) -> Result<Vec<u64>, D::Error> {
         .collect()
 }
 
-struct ListSyncHandler;
+struct ListSyncHandler {
+    user_space: &'static UserSpace,
+}
 
 impl ListSyncActionHandler for ListSyncHandler {
-    fn on_list_data_overwrite(&self, arg: ListData) -> () {
-        todo!()
+    fn on_list_data_overwrite(&self, data: ListData) -> () {
+        self.user_space.list.overwrite(data);
     }
 
     fn on_list_create(&self, position: usize, infos: Vec<CustomListInfo>) -> () {

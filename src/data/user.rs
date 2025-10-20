@@ -1,10 +1,6 @@
-use crate::data::{dislike::DislikeData, list::ListData, DataManager, Username};
+use crate::data::{dislike::DislikeData, list::ListData, manager::DataManager, ClientId, Username};
 use crate::server::SERVER_CONTEXT;
-use crate::utils::load_or_create;
-use crate::{
-    data::ClientId,
-    utils::crypto::rand_16bytes_as_base64,
-};
+use crate::utils::{crypto::rand_16bytes_as_base64, load_or_create};
 use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -96,7 +92,7 @@ impl DevicesInfos {
     pub(crate) fn load(path: &Path) -> &'static Self {
         let deserialized: Vec<DeviceInfo> = load_or_create(path.as_ref());
 
-        let result =  Self {
+        let result = Self {
             clients: ArcSwap::from_pointee(
                 deserialized
                     .into_iter()

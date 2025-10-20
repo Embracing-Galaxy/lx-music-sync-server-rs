@@ -1,6 +1,6 @@
 macro_rules! sync_once_for {
     ($name:ident) => {
-        use crate::data::{config::AddMusicLocation, user::UserSpace, DataType, SnapshotKey};
+        use crate::data::{config::AddMusicLocation, manager::DataType, user::UserSpace,  SnapshotKey};
         use crate::server::socket::SocketContext;
         use crate::utils::crypto::{hex_to_md5, MD5};
         use paste::paste;
@@ -26,7 +26,7 @@ macro_rules! sync_once_for {
                     broadcast(socket, new_data, new_key).await;
                 }
             } else {
-                user_space.$name.overwrite(&socket.client_id, client_data).await;
+                user_space.$name.overwrite_from_client(&socket.client_id, client_data).await;
             }
 
             // Used to prompt the client to start performing incremental sync

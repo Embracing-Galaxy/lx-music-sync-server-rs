@@ -1,4 +1,4 @@
-use crate::data::{config::AddMusicLocation, Data};
+use crate::data::{config::AddMusicLocation, manager::Data};
 pub(crate) use music::MusicInfo;
 use music::MusicSource;
 use serde::{Deserialize, Deserializer, Serialize};
