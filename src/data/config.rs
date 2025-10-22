@@ -21,7 +21,7 @@ pub(crate) struct UserConfig {
     pub(crate) add_music_location: AddMusicLocation,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) enum AddMusicLocation {
     #[default]
     TOP,

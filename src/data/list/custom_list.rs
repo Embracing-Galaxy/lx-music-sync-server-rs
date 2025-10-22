@@ -15,7 +15,7 @@ pub(super) struct CustomList {
 #[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct CustomListInfo {
     #[serde(deserialize_with = "de_list_id")]
-    pub(super) id: u64,
+    pub(super) id: u64, // actually construct from utils::now_ms
     name: String,
     source: Option<MusicSource>, // TODO Usually None, its role is not yet clear
     source_list_id: Option<String>,

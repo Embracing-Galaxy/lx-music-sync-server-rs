@@ -25,13 +25,19 @@ impl ListData {
     }
 }
 
-/// deserialize "userlist_<some number>" to u64
+/// deserialize "userlist_<some number>" to u64, or "default" -> 0, "love" -> 1
 pub(crate) fn de_list_id<'de, D: Deserializer<'de>>(de: D) -> Result<u64, D::Error> {
     let raw_str = String::deserialize(de)?;
-    const PREFIX_LEN: usize = "userlist_".len();
-    raw_str[PREFIX_LEN..]
-        .parse()
-        .map_err(serde::de::Error::custom)
+    match raw_str.as_str() {
+        "default" => Ok(0),
+        "love" => Ok(1),
+        _ => {
+            const PREFIX_LEN: usize = "userlist_".len();
+            raw_str[PREFIX_LEN..]
+                .parse()
+                .map_err(serde::de::Error::custom)
+        }
+    }
 }
 
 impl Data for ListData {

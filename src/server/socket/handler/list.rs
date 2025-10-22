@@ -2,6 +2,7 @@ use super::*;
 use crate::data::config::AddMusicLocation;
 use crate::data::list::{de_list_id, CustomListInfo, ListData, MusicInfo};
 use serde::Deserializer;
+use std::collections::HashSet;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case")]
@@ -12,11 +13,14 @@ pub(crate) enum ListSyncAction {
         #[serde(rename = "listInfos")]
         infos: Vec<CustomListInfo>,
     },
-    ListRemove(Vec<u64>),
+    ListRemove {
+        #[serde(deserialize_with = "de_list_ids")]
+        to_remove: HashSet<u64>,
+    },
     ListUpdate(Vec<CustomListInfo>),
     ListUpdatePosition {
         #[serde(deserialize_with = "de_list_ids")]
-        ids: Vec<u64>,
+        ids: HashSet<u64>,
         position: usize,
     },
 
@@ -41,7 +45,7 @@ pub(crate) enum ListSyncAction {
     ListMusicRemove {
         #[serde(rename = "listId", deserialize_with = "de_list_id")]
         list_id: u64,
-        ids: Vec<String>,
+        ids: HashSet<String>,
     },
     ListMusicUpdate {
         id: String,
@@ -52,7 +56,7 @@ pub(crate) enum ListSyncAction {
         #[serde(rename = "listId", deserialize_with = "de_list_id")]
         list_id: u64,
         position: usize,
-        ids: Vec<String>,
+        ids: HashSet<String>,
     },
     ListMusicOverwrite {
         #[serde(rename = "listId", deserialize_with = "de_list_id")]
@@ -60,11 +64,14 @@ pub(crate) enum ListSyncAction {
         #[serde(rename = "musicInfos")]
         musics: Vec<MusicInfo>,
     },
-    ListMusicClear(Vec<String>), // FIXME
+    ListMusicClear {
+        #[serde(deserialize_with = "de_list_ids")]
+        list_ids: HashSet<u64>,
+    },
 }
 
-fn de_list_ids<'de, D: Deserializer<'de>>(de: D) -> Result<Vec<u64>, D::Error> {
-    let raw_vec: Vec<String> = Vec::deserialize(de)?;
+fn de_list_ids<'de, D: Deserializer<'de>>(de: D) -> Result<HashSet<u64>, D::Error> {
+    let raw_vec: HashSet<String> = HashSet::deserialize(de)?;
     const PREFIX: usize = "userlist_".len();
     raw_vec
         .into_iter()
@@ -79,7 +86,7 @@ pub(crate) trait ListSyncActionHandler {
             ListSyncAction::ListCreate { position, infos } => {
                 self.on_list_create(position, infos).await
             }
-            ListSyncAction::ListRemove(arg) => self.on_list_remove(arg).await,
+            ListSyncAction::ListRemove { to_remove } => self.on_list_remove(to_remove).await,
             ListSyncAction::ListUpdate(arg) => self.on_list_update(arg).await,
             ListSyncAction::ListUpdatePosition { ids, position } => {
                 self.on_list_update_position(ids, position).await
@@ -115,17 +122,17 @@ pub(crate) trait ListSyncActionHandler {
             ListSyncAction::ListMusicOverwrite { list_id, musics } => {
                 self.on_list_music_overwrite(list_id, musics).await
             }
-            ListSyncAction::ListMusicClear(arg) => self.on_list_music_clear(arg).await,
+            ListSyncAction::ListMusicClear { list_ids } => self.on_list_music_clear(list_ids).await,
         }
     }
     async fn on_list_data_overwrite(&mut self, arg: ListData);
     async fn on_list_create(&mut self, position: i64, infos: Vec<CustomListInfo>);
-    async fn on_list_remove(&mut self, arg: Vec<u64>);
+    async fn on_list_remove(&mut self, to_remove: HashSet<u64>);
     async fn on_list_update(&mut self, arg: Vec<CustomListInfo>);
-    async fn on_list_update_position(&mut self, ids: Vec<u64>, position: usize);
+    async fn on_list_update_position(&mut self, ids: HashSet<u64>, position: usize);
     async fn on_list_music_add(
         &mut self,
-        id: u64,
+        list_id: u64,
         musics: Vec<MusicInfo>,
         add_type: AddMusicLocation,
     );
@@ -136,16 +143,16 @@ pub(crate) trait ListSyncActionHandler {
         musics: Vec<MusicInfo>,
         add_type: AddMusicLocation,
     );
-    async fn on_list_music_remove(&mut self, list_id: u64, ids: Vec<String>);
+    async fn on_list_music_remove(&mut self, list_id: u64, ids: HashSet<String>);
     async fn on_list_music_update(&mut self, id: String, music: MusicInfo);
     async fn on_list_music_update_position(
         &mut self,
         list_id: u64,
         position: usize,
-        ids: Vec<String>,
+        ids: HashSet<String>,
     );
     async fn on_list_music_overwrite(&mut self, list_id: u64, musics: Vec<MusicInfo>);
-    async fn on_list_music_clear(&mut self, arg: Vec<String>);
+    async fn on_list_music_clear(&mut self, list_ids: HashSet<u64>);
 }
 
 pub(in crate::server::socket) fn on_list_sync(ready: &AtomicBool, user_space: &UserSpace) {
