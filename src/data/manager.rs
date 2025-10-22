@@ -1,4 +1,4 @@
-use crate::data::{config::AddMusicLocation, dislike::DislikeData, list::ListData};
+use crate::data::{config::AddMusicLocation, dislike::DislikeData};
 use crate::data::{ClientId, SnapshotInfo, SnapshotKey};
 use crate::utils::crypto::{md5_to_hex, to_md5};
 use crate::utils::load_or_create;
@@ -137,5 +137,3 @@ impl DataManager<DislikeData> {
         self.current_data.write().await.push_str(new);
     }
 }
-
-impl DataManager<ListData> {}

@@ -15,13 +15,9 @@ enum DislikeSyncAction {
     Clear,
 }
 
-struct DislikeSyncHandler {
-    user_space: &'static UserSpace,
-}
-
-impl DislikeSyncActionHandler for DislikeSyncHandler {
+impl DislikeSyncActionHandler for UserSpace {
     async fn on_overwrite(&self, data: DislikeData) {
-        self.user_space.dislike.overwrite(data).await;
+        self.dislike.overwrite(data).await;
     }
 
     async fn on_add(&self, data: Vec<(Name, Singer)>) {
@@ -29,11 +25,11 @@ impl DislikeSyncActionHandler for DislikeSyncHandler {
             .into_iter()
             .map(format_to_rule)
             .collect();
-        self.user_space.dislike.append(&new_rules.join("\n"));
+        self.dislike.append(&new_rules.join("\n"));
     }
 
     async fn on_clear(&self) {
-        self.user_space.dislike.clear().await;
+        self.dislike.clear().await;
     }
 }
 

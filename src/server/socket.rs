@@ -23,6 +23,8 @@ use {
     handler::{on_dislike_sync, on_list_sync},
 };
 
+pub(crate) use handler::ListSyncActionHandler;
+
 mod dto;
 mod handler;
 
