@@ -49,7 +49,7 @@ macro_rules! sync_once_for {
                 "action": concat!(stringify!($name), "_data_overwrite"),
                 "data": data
             });
-            socket.broadcast_sync_result(TYPE, broadcast_data, key).await;
+            socket.broadcast(TYPE, broadcast_data, key).await;
         }
 
         #[inline]

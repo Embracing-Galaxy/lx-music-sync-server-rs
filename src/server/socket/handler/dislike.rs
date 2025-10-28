@@ -1,12 +1,9 @@
 use super::*;
-use crate::data::dislike::DislikeData;
-type Name = String;
-type Singer = String;
+use crate::data::dislike::{DislikeData, Name, Singer};
 
-#[derive(Deserialize, enum_handler::EnumHandler)]
+#[derive(Deserialize)]
 #[serde(tag = "action", content = "data")]
-#[enum_handler(is_async = true, no_async_trait_macro = true)]
-enum DislikeSyncAction {
+pub(crate) enum DislikeSyncAction {
     #[serde(rename = "dislike_data_overwrite")]
     Overwrite(DislikeData),
     #[serde(rename = "dislike_music_add")]
@@ -15,36 +12,18 @@ enum DislikeSyncAction {
     Clear,
 }
 
-impl DislikeSyncActionHandler for UserSpace {
-    async fn on_overwrite(&self, data: DislikeData) {
-        self.dislike.overwrite(data).await;
-    }
-
-    async fn on_add(&self, data: Vec<(Name, Singer)>) {
-        let new_rules: Vec<String> = data
-            .into_iter()
-            .map(format_to_rule)
-            .collect();
-        self.dislike.append(&new_rules.join("\n"));
-    }
-
-    async fn on_clear(&self) {
-        self.dislike.clear().await;
+impl JsonReqHandler for DislikeData {
+    async fn on(&mut self, e: serde_json::Value) {
+        match serde_json::from_value(e).unwrap() {
+            DislikeSyncAction::Overwrite(data) => self.on_overwrite(data).await,
+            DislikeSyncAction::Add(data) => self.on_add(data).await,
+            DislikeSyncAction::Clear => self.on_clear().await,
+        }
     }
 }
 
-fn format_to_rule(name_and_singer: (Name, Singer)) -> DislikeData {
-    let (name, singer) = name_and_singer;
-    if singer.is_empty() {
-        name
-    } else {
-        format!("{name}@{singer}")
-    }
-}
-
-pub(in crate::server::socket) fn on_dislike_sync(ready: &AtomicBool, user_space: &UserSpace) {
-    if !ready.load(Ordering::Relaxed) {
-        return;
-    }
-    todo!()
+pub(crate) trait DislikeSyncActionHandler {
+    async fn on_overwrite(&mut self, data: DislikeData);
+    async fn on_add(&mut self, arg: Vec<(Name, Singer)>);
+    async fn on_clear(&mut self);
 }

@@ -1,5 +1,5 @@
-use crate::data::{config::AddMusicLocation, dislike::DislikeData};
-use crate::data::{ClientId, SnapshotInfo, SnapshotKey};
+use crate::data::{config::AddMusicLocation, ClientId, SnapshotInfo, SnapshotKey};
+use crate::server::socket::handler::JsonReqHandler;
 use crate::utils::crypto::{md5_to_hex, to_md5};
 use crate::utils::load_or_create;
 use serde::{de::DeserializeOwned, Serialize};
@@ -48,10 +48,7 @@ impl<DATA: Data> DataManager<DATA> {
 
     pub(crate) async fn get_info_key(&self) -> SnapshotKey {
         match self.snapshot_info.read().await.latest_key {
-            None => {
-                self.create_snapshot(serde_json::to_vec(&*self.current_data.read().await).unwrap())
-                    .await
-            }
+            None => self.save_snapshot().await, // latest_key would update inside the `save_snapshot`
             Some(latest) => latest,
         }
     }
@@ -86,6 +83,11 @@ impl<DATA: Data> DataManager<DATA> {
         key
     }
 
+    async fn save_snapshot(&self) -> SnapshotKey {
+        let bytes = serde_json::to_vec(&*self.current_data.read().await).unwrap();
+        self.create_snapshot(bytes).await
+    }
+
     pub(crate) async fn merge(
         &self,
         client_id: &ClientId,
@@ -112,14 +114,9 @@ impl<DATA: Data> DataManager<DATA> {
         self.create_snapshot(bytes).await;
     }
 
-    #[inline]
-    pub(crate) async fn overwrite(&self, data: DATA) {
-        *self.current_data.write().await = data;
-    }
-
-    #[inline]
-    pub(crate) async fn clear(&self) {
-        *self.current_data.write().await = DATA::default();
+    pub(crate) async fn on_sync(&self, action: serde_json::Value) -> SnapshotKey {
+        self.current_data.write().await.on(action).await;
+        self.save_snapshot().await
     }
 
     pub(crate) async fn update_snapshot_key(&self, client_id: &ClientId, key: SnapshotKey) {
@@ -127,13 +124,7 @@ impl<DATA: Data> DataManager<DATA> {
     }
 }
 
-pub(crate) trait Data: Default + Serialize + DeserializeOwned {
+pub(crate) trait Data: Default + Serialize + DeserializeOwned + JsonReqHandler {
     fn is_empty(&self) -> bool;
     fn merge(&mut self, client: &Self, snapshot: &Self, add_location: &AddMusicLocation);
-}
-
-impl DataManager<DislikeData> {
-    pub(crate) async fn append(&self, new: &DislikeData) {
-        self.current_data.write().await.push_str(new);
-    }
 }

@@ -8,6 +8,7 @@ use crate::{
 };
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
+use dto::{EnabledFeatures, Req, Resp};
 use futures_util::{stream::SplitSink, stream::SplitStream, SinkExt, StreamExt};
 use log::{info, trace};
 use serde_json::json;
@@ -18,15 +19,9 @@ use std::time::Duration;
 use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinSet;
 use tokio::time::interval;
-use {
-    dto::{EnabledFeatures, Req, Resp},
-    handler::{on_dislike_sync, on_list_sync},
-};
-
-pub(crate) use handler::ListSyncActionHandler;
 
 mod dto;
-mod handler;
+pub(crate) mod handler;
 
 #[derive(Clone)]
 pub(super) struct SocketContext {
@@ -119,31 +114,44 @@ impl SocketContext {
         }
     }
 
-    pub(crate) fn on_message_string(&self, msg: &[u8]) {
-        match serde_json::from_slice::<IncomingMsg>(msg) {
-            Ok(msg) => match msg {
-                IncomingMsg::Req(req) => {
-                    // already checked in main
-                    let user_space = SERVER_CONTEXT.get_user_space(self.username).unwrap();
-                    match req.name.as_str() {
-                        "onListSyncAction" => on_list_sync(&self.list_ready, user_space),
-                        "onDislikeSyncAction" => on_dislike_sync(&self.dislike_ready, user_space),
-                        _ => todo!("unsupported"),
+    pub(crate) async fn on_message_string(&self, msg: &[u8]) {
+        let Ok(incoming_msg) = serde_json::from_slice::<IncomingMsg>(msg) else {
+            todo!("on err")
+        };
+
+        match incoming_msg {
+            IncomingMsg::Req(req) => {
+                // already checked in main
+                let user = SERVER_CONTEXT.get_user_space(self.username).unwrap();
+                match req.name.as_str() {
+                    "onListSyncAction" => {
+                        if self.list_ready.load(Ordering::Relaxed) {
+                            let key = user.list.on_sync(req.data).await;
+                            let action = serde_json::from_slice(msg).unwrap();
+                            self.broadcast(DataType::LIST, action, key).await;
+                        }
                     }
-                }
-                IncomingMsg::Resp(resp) => {
-                    if let Some((_, tx)) = self.callbacks.remove(&resp.name)
-                        && !tx.is_closed()
-                    {
-                        tx.send(resp).unwrap();
+                    "onDislikeSyncAction" => {
+                        if self.dislike_ready.load(Ordering::Relaxed) {
+                            let key = user.dislike.on_sync(req.data).await;
+                            let action = serde_json::from_slice(msg).unwrap();
+                            self.broadcast(DataType::DISLIKE, action, key).await;
+                        }
                     }
+                    _ => todo!("unsupported"),
                 }
-            },
-            Err(_) => todo!("on err"),
+            }
+            IncomingMsg::Resp(resp) => {
+                if let Some((_, tx)) = self.callbacks.remove(&resp.name)
+                    && !tx.is_closed()
+                {
+                    tx.send(resp).unwrap();
+                }
+            }
         }
     }
 
-    pub(crate) async fn broadcast_sync_result(
+    pub(crate) async fn broadcast(
         &self,
         data_type: DataType,
         data: serde_json::Value,
@@ -161,10 +169,6 @@ impl SocketContext {
                 key,
             ))
             .expect("Failed to broadcast sync result");
-    }
-
-    async fn on_list_sync_action(&self) {
-        todo!("broadcast sync action & update snapshot key");
     }
 }
 
@@ -214,7 +218,7 @@ async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Ar
                     context,
                     String::from_utf8_lossy(&data)
                 );
-                context.on_message_string(&data);
+                context.on_message_string(&data).await;
             }
             Message::Pong(_) => {
                 got_pong.store(true, Ordering::Relaxed);
@@ -226,24 +230,23 @@ async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Ar
 
 async fn handle_broadcast(context: SocketContext, mut rx: Subscriber) {
     while let Ok((client_id, name, data, data_type, key)) = rx.recv().await {
-        if context.client_id == client_id {
+        if context.client_id == client_id
+            || match data_type {
+                DataType::LIST => context.list_ready.load(Ordering::Relaxed),
+                DataType::DISLIKE => context.dislike_ready.load(Ordering::Relaxed),
+            }
+        {
             continue;
         }
 
-        context.post(name, vec![data]).await;
+        context.post(name, vec![data]).await; // send msg that needs to be broadcast
 
         // already checked in main
-        let user_space = SERVER_CONTEXT.get_user_space(context.username).unwrap();
+        let user = SERVER_CONTEXT.get_user_space(context.username).unwrap();
         match data_type {
-            DataType::LIST => {
-                user_space
-                    .list
-                    .update_snapshot_key(&context.client_id, key)
-                    .await
-            }
+            DataType::LIST => user.list.update_snapshot_key(&context.client_id, key).await,
             DataType::DISLIKE => {
-                user_space
-                    .dislike
+                user.dislike
                     .update_snapshot_key(&context.client_id, key)
                     .await
             }

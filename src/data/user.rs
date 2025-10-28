@@ -80,7 +80,10 @@ impl UserData {
 
     /// Write `devices_infos` to file without await
     fn write_devices_infos(&self) {
-        tokio::spawn(tokio::fs::write(self.devices_file_path, self.devices_infos.serialize()));
+        tokio::spawn(tokio::fs::write(
+            self.devices_file_path,
+            self.devices_infos.serialize(),
+        ));
     }
 }
 

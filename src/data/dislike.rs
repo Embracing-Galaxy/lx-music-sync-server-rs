@@ -1,8 +1,11 @@
 use crate::data::config::AddMusicLocation;
 use crate::data::manager::Data;
+use crate::server::socket::handler::DislikeSyncActionHandler;
 use std::collections::HashSet;
 
 pub(crate) type DislikeData = String;
+pub(crate) type Name = String;
+pub(crate) type Singer = String;
 
 impl Data for DislikeData {
     #[inline]
@@ -24,5 +27,29 @@ impl Data for DislikeData {
             .cloned()
             .collect::<Vec<_>>()
             .join("\n")
+    }
+}
+
+impl DislikeSyncActionHandler for DislikeData {
+    async fn on_overwrite(&mut self, data: DislikeData) {
+        *self = data;
+    }
+
+    async fn on_add(&mut self, data: Vec<(Name, Singer)>) {
+        let new_rules: Vec<String> = data.into_iter().map(format_to_rule).collect();
+        self.push_str(&new_rules.join("\n"));
+    }
+
+    async fn on_clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
+fn format_to_rule(name_and_singer: (Name, Singer)) -> DislikeData {
+    let (name, singer) = name_and_singer;
+    if singer.is_empty() {
+        name
+    } else {
+        format!("{name}@{singer}")
     }
 }

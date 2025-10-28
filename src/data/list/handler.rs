@@ -1,9 +1,11 @@
 use super::{AddMusicLocation, CustomList, CustomListInfo, ListData, MusicInfo};
-use crate::server::socket::ListSyncActionHandler;
+use crate::server::socket::handler::{ListSyncActionHandler, MusicUpdateInfo};
 use crate::utils::now_ms;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 impl ListData {
+    #[inline]
     fn get_music_list(&mut self, id: u64) -> Option<&mut Vec<MusicInfo>> {
         match id {
             0 => Some(&mut self.default),
@@ -17,13 +19,12 @@ impl ListData {
     }
 }
 
-#[allow(unused)]
 impl ListSyncActionHandler for ListData {
-    async fn on_list_data_overwrite(&mut self, data: ListData) {
+    async fn list_data_overwrite(&mut self, data: ListData) {
         *self = data;
     }
 
-    async fn on_list_create(&mut self, position: i64, infos: Vec<CustomListInfo>) {
+    async fn list_create(&mut self, position: i64, infos: Vec<CustomListInfo>) {
         let position = usize::try_from(position).unwrap_or(0);
         if infos.len() == 1 {
             let info = infos.into_iter().next().unwrap();
@@ -61,7 +62,7 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    async fn on_list_remove(&mut self, to_remove: HashSet<u64>) {
+    async fn list_remove(&mut self, to_remove: HashSet<u64>) {
         if to_remove.len() == 1 {
             let id = to_remove.into_iter().next().unwrap();
             if let Some(pos) = self.custom_lists.iter().position(|list| list.id() == id) {
@@ -73,7 +74,7 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    async fn on_list_update(&mut self, infos: Vec<CustomListInfo>) {
+    async fn list_update(&mut self, infos: Vec<CustomListInfo>) {
         if infos.len() == 1 {
             let info = infos.into_iter().next().unwrap();
             if let Some(pos) = self
@@ -96,7 +97,7 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    async fn on_list_update_position(&mut self, ids: HashSet<u64>, position: usize) {
+    async fn list_sort(&mut self, ids: HashSet<u64>, position: usize) {
         let (mut to_keep, mut to_move): (Vec<_>, Vec<_>) = self
             .custom_lists
             .drain(..)
@@ -115,48 +116,81 @@ impl ListSyncActionHandler for ListData {
         self.custom_lists = to_keep;
     }
 
-    async fn on_list_music_add(
+    async fn list_clear(&mut self, list_ids: HashSet<u64>) {
+        for list_id in list_ids {
+            if let Some(target_list) = self.get_music_list(list_id) {
+                *target_list = Vec::new();
+            }
+        }
+    }
+
+    async fn music_add(
         &mut self,
         list_id: u64,
         mut musics: Vec<MusicInfo>,
         add_type: AddMusicLocation,
     ) {
-        let Some(target_list) = self.get_music_list(list_id) else {
-            return;
+        if let Some(target_list) = self.get_music_list(list_id) {
+            if add_type == AddMusicLocation::TOP {
+                std::mem::swap(target_list, &mut musics);
+            }
+            target_list.extend(musics);
         };
-        if add_type == AddMusicLocation::TOP {
-            std::mem::swap(target_list, &mut musics);
-        }
-        target_list.extend(musics);
     }
 
-    async fn on_list_music_move(
+    async fn music_move(
         &mut self,
-        from_id: String,
-        to_id: String,
+        src_list_id: u64,
+        dst_list_id: u64,
         musics: Vec<MusicInfo>,
         add_type: AddMusicLocation,
     ) {
-        todo!()
+        self.music_remove(src_list_id, musics.iter().map(MusicInfo::take_id).collect())
+            .await;
+        self.music_add(dst_list_id, musics, add_type).await;
     }
 
-    async fn on_list_music_remove(&mut self, list_id: u64, ids: HashSet<String>) {
-        let Some(target_list) = self.get_music_list(list_id) else {
-            return;
+    async fn music_remove(&mut self, list_id: u64, ids: HashSet<String>) {
+        if let Some(target_list) = self.get_music_list(list_id) {
+            target_list.retain(|info| !ids.contains(info.get_id()));
         };
-        target_list.retain(|info| !ids.contains(info.get_id()));
     }
 
-    async fn on_list_music_update(&mut self, id: String, music: MusicInfo) {
-        todo!()
+    async fn music_update(&mut self, data: Vec<MusicUpdateInfo>) {
+        if data.len() == 1 {
+            let MusicUpdateInfo { id: list_id, music } = data.into_iter().next().unwrap();
+            if let Some(target_list) = self.get_music_list(list_id) {
+                target_list
+                    .iter_mut()
+                    .find(|info| info.get_id() == music.get_id())
+                    .map(|info| *info = music);
+            };
+            return;
+        }
+        let mut map: HashMap<u64, HashMap<String, MusicInfo>> = HashMap::new();
+        for MusicUpdateInfo { id, music } in data.into_iter() {
+            match map.entry(id) {
+                Entry::Occupied(mut e) => {
+                    e.get_mut().insert(music.take_id(), music);
+                }
+                Entry::Vacant(e) => {
+                    e.insert(HashMap::from([(music.take_id(), music)]));
+                }
+            }
+        }
+
+        for (list_id, mut info_map) in map.into_iter() {
+            if let Some(target_list) = self.get_music_list(list_id) {
+                for info in target_list.iter_mut() {
+                    if let Some(new_info) = info_map.remove(info.get_id()) {
+                        *info = new_info;
+                    }
+                }
+            };
+        }
     }
 
-    async fn on_list_music_update_position(
-        &mut self,
-        list_id: u64,
-        position: usize,
-        ids: HashSet<String>,
-    ) {
+    async fn music_sort(&mut self, list_id: u64, position: usize, ids: HashSet<String>) {
         let Some(target_list) = self.get_music_list(list_id) else {
             return;
         };
@@ -173,17 +207,9 @@ impl ListSyncActionHandler for ListData {
         *target_list = to_keep;
     }
 
-    async fn on_list_music_overwrite(&mut self, list_id: u64, musics: Vec<MusicInfo>) {
+    async fn music_overwrite(&mut self, list_id: u64, musics: Vec<MusicInfo>) {
         if let Some(target_list) = self.get_music_list(list_id) {
             *target_list = musics;
-        }
-    }
-
-    async fn on_list_music_clear(&mut self, list_ids: HashSet<u64>) {
-        for list_id in list_ids {
-            if let Some(target_list) = self.get_music_list(list_id) {
-                *target_list = Vec::new();
-            }
         }
     }
 }

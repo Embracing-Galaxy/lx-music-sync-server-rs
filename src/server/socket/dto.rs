@@ -12,7 +12,7 @@ pub(super) enum IncomingMsg {
 pub(super) struct Req {
     pub(super) name: String,
     path: Vec<String>,
-    data: serde_json::Value,
+    pub(super) data: serde_json::Value,
 }
 
 impl Req {
