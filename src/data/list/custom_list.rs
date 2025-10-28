@@ -1,9 +1,7 @@
-
+use super::{de_list_id, music::MusicSource, se_list_id, MusicInfo};
 use crate::data::config::AddMusicLocation;
-use crate::data::list::de_list_id;
-use crate::data::list::music::MusicSource;
-use crate::data::list::{combine_without_duplication, MusicInfo};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(super) struct CustomList {
@@ -14,7 +12,7 @@ pub(super) struct CustomList {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct CustomListInfo {
-    #[serde(deserialize_with = "de_list_id")]
+    #[serde(deserialize_with = "de_list_id", serialize_with = "se_list_id")]
     pub(super) id: u64, // actually construct from utils::now_ms
     name: String,
     source: Option<MusicSource>, // TODO Usually None, its role is not yet clear
@@ -53,11 +51,7 @@ impl CustomList {
 impl CustomListInfo {
     #[inline]
     fn merge(&self, client_list: &Self, snapshot_list: &Self) -> Self {
-        fn select_data<'a, T: PartialEq + Clone>(
-            current: &'a T,
-            client: &'a T,
-            snapshot: &T,
-        ) -> T {
+        fn select_data<'a, T: PartialEq + Clone>(current: &'a T, client: &'a T, snapshot: &T) -> T {
             if current == snapshot { client } else { current }.clone()
         }
         Self {
@@ -71,5 +65,23 @@ impl CustomListInfo {
             ),
             location_update_time: self.location_update_time,
         }
+    }
+}
+
+fn combine_without_duplication(
+    a: &Vec<MusicInfo>,
+    b: &Vec<MusicInfo>,
+    add_location: &AddMusicLocation,
+) -> Vec<MusicInfo> {
+    let base = a.iter().cloned();
+    let seen: HashSet<&str> = a.iter().map(MusicInfo::get_id).collect();
+    let new = b
+        .iter()
+        .filter(|&info| !seen.contains(info.get_id()))
+        .cloned();
+
+    match add_location {
+        AddMusicLocation::TOP => new.chain(base).collect(),
+        AddMusicLocation::BOTTOM => base.chain(new).collect(),
     }
 }

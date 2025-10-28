@@ -123,18 +123,17 @@ impl SocketContext {
             IncomingMsg::Req(req) => {
                 // already checked in main
                 let user = SERVER_CONTEXT.get_user_space(self.username).unwrap();
+                let action = serde_json::from_slice(msg).unwrap();
                 match req.name.as_str() {
                     "onListSyncAction" => {
                         if self.list_ready.load(Ordering::Relaxed) {
                             let key = user.list.on_sync(req.data).await;
-                            let action = serde_json::from_slice(msg).unwrap();
                             self.broadcast(DataType::LIST, action, key).await;
                         }
                     }
                     "onDislikeSyncAction" => {
                         if self.dislike_ready.load(Ordering::Relaxed) {
                             let key = user.dislike.on_sync(req.data).await;
-                            let action = serde_json::from_slice(msg).unwrap();
                             self.broadcast(DataType::DISLIKE, action, key).await;
                         }
                     }

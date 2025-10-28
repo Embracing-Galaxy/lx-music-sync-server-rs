@@ -2,7 +2,7 @@ use crate::data::{config::AddMusicLocation, manager::Data};
 use custom_list::CustomList;
 pub(crate) use custom_list::CustomListInfo;
 pub(crate) use music::MusicInfo;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
@@ -23,6 +23,10 @@ impl ListData {
             .map(|list| (list.id(), list))
             .collect()
     }
+}
+
+pub(crate) fn se_list_id<S: Serializer>(id: &u64, ser: S) -> Result<S::Ok, S::Error> {
+    ser.serialize_str(&format!("userlist_{}", id))
 }
 
 /// deserialize "userlist_<some number>" to u64, or "default" -> 0, "love" -> 1
@@ -160,31 +164,13 @@ fn merge_vec(
     }
 }
 
-fn combine_without_duplication(
-    a: &Vec<MusicInfo>,
-    b: &Vec<MusicInfo>,
-    add_location: &AddMusicLocation,
-) -> Vec<MusicInfo> {
-    let base = a.iter().cloned();
-    let seen: HashSet<&str> = a.iter().map(MusicInfo::get_id).collect();
-    let new = b
-        .iter()
-        .filter(|&info| !seen.contains(info.get_id()))
-        .cloned();
-
-    match add_location {
-        AddMusicLocation::TOP => new.chain(base).collect(),
-        AddMusicLocation::BOTTOM => base.chain(new).collect(),
-    }
-}
-
 mod custom_list;
 mod handler;
 mod music;
 
 #[cfg(test)]
 mod tests {
-    use super::de_list_id;
+    use super::{de_list_id, se_list_id};
     use serde::de::value::{Error, StrDeserializer};
 
     #[test]
@@ -193,5 +179,11 @@ mod tests {
         let de = StrDeserializer::<Error>::new(id);
         let id: u64 = de_list_id(de).expect("should parse");
         assert_eq!(id, 12345);
+    }
+
+    #[test]
+    fn serialize_custom_list_id() {
+        let id_str: serde_json::Value = se_list_id(&12345, serde_json::value::Serializer).unwrap();
+        assert_eq!(id_str, serde_json::json!("userlist_12345"));
     }
 }
