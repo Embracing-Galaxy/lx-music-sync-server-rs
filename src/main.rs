@@ -98,12 +98,7 @@ async fn fallback() -> (StatusCode, &'static str) {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let log_level = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "info"
-    };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
+    env_logger::init();
     SERVER_CONTEXT.start_daemon();
     let connections = ConnectionMap::default();
     let (tx, _) = broadcast::channel(16);
