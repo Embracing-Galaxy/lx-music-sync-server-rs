@@ -125,7 +125,6 @@ impl SocketContext {
                 let user = SERVER_CONTEXT.get_user_space(self.username).unwrap();
                 let action = serde_json::from_slice(msg).unwrap();
                 let req_name = req.name.split("__").next().unwrap();
-                debug!("get action: {action}");
                 let data = unsafe { std::ptr::read(req.data.as_ptr()) };
                 match req_name {
                     "onListSyncAction" => {

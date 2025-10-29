@@ -20,11 +20,11 @@ impl ListData {
 }
 
 impl ListSyncActionHandler for ListData {
-    async fn list_data_overwrite(&mut self, data: ListData) {
+    fn list_data_overwrite(&mut self, data: ListData) {
         *self = data;
     }
 
-    async fn list_create(&mut self, position: i64, infos: Vec<CustomListInfo>) {
+    fn list_create(&mut self, position: i64, infos: Vec<CustomListInfo>) {
         let position = usize::try_from(position).unwrap_or(0);
         if infos.len() == 1 {
             let info = infos.into_iter().next().unwrap();
@@ -62,7 +62,7 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    async fn list_remove(&mut self, to_remove: HashSet<u64>) {
+    fn list_remove(&mut self, to_remove: HashSet<u64>) {
         if to_remove.len() == 1 {
             let id = to_remove.into_iter().next().unwrap();
             if let Some(pos) = self.custom_lists.iter().position(|list| list.id() == id) {
@@ -74,7 +74,7 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    async fn list_update(&mut self, infos: Vec<CustomListInfo>) {
+    fn list_update(&mut self, infos: Vec<CustomListInfo>) {
         if infos.len() == 1 {
             let info = infos.into_iter().next().unwrap();
             if let Some(pos) = self
@@ -97,7 +97,7 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    async fn list_sort(&mut self, ids: HashSet<u64>, position: usize) {
+    fn list_sort(&mut self, ids: HashSet<u64>, position: usize) {
         let (mut to_keep, mut to_move): (Vec<_>, Vec<_>) = self
             .custom_lists
             .drain(..)
@@ -116,7 +116,7 @@ impl ListSyncActionHandler for ListData {
         self.custom_lists = to_keep;
     }
 
-    async fn list_clear(&mut self, list_ids: HashSet<u64>) {
+    fn list_clear(&mut self, list_ids: HashSet<u64>) {
         for list_id in list_ids {
             if let Some(target_list) = self.get_music_list(list_id) {
                 *target_list = Vec::new();
@@ -124,12 +124,7 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    async fn music_add(
-        &mut self,
-        list_id: u64,
-        mut musics: Vec<MusicInfo>,
-        add_type: AddMusicLocation,
-    ) {
+    fn music_add(&mut self, list_id: u64, mut musics: Vec<MusicInfo>, add_type: AddMusicLocation) {
         if let Some(target_list) = self.get_music_list(list_id) {
             if add_type == AddMusicLocation::TOP {
                 std::mem::swap(target_list, &mut musics);
@@ -138,25 +133,24 @@ impl ListSyncActionHandler for ListData {
         };
     }
 
-    async fn music_move(
+    fn music_move(
         &mut self,
         src_list_id: u64,
         dst_list_id: u64,
         musics: Vec<MusicInfo>,
         add_type: AddMusicLocation,
     ) {
-        self.music_remove(src_list_id, musics.iter().map(MusicInfo::take_id).collect())
-            .await;
-        self.music_add(dst_list_id, musics, add_type).await;
+        self.music_remove(src_list_id, musics.iter().map(MusicInfo::take_id).collect());
+        self.music_add(dst_list_id, musics, add_type);
     }
 
-    async fn music_remove(&mut self, list_id: u64, ids: HashSet<String>) {
+    fn music_remove(&mut self, list_id: u64, ids: HashSet<String>) {
         if let Some(target_list) = self.get_music_list(list_id) {
             target_list.retain(|info| !ids.contains(info.get_id()));
         };
     }
 
-    async fn music_update(&mut self, data: Vec<MusicUpdateInfo>) {
+    fn music_update(&mut self, data: Vec<MusicUpdateInfo>) {
         if data.len() == 1 {
             let MusicUpdateInfo { id: list_id, music } = data.into_iter().next().unwrap();
             if let Some(target_list) = self.get_music_list(list_id) {
@@ -190,7 +184,7 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    async fn music_sort(&mut self, list_id: u64, position: usize, ids: HashSet<String>) {
+    fn music_sort(&mut self, list_id: u64, position: usize, ids: HashSet<String>) {
         let Some(target_list) = self.get_music_list(list_id) else {
             return;
         };
@@ -207,7 +201,7 @@ impl ListSyncActionHandler for ListData {
         *target_list = to_keep;
     }
 
-    async fn music_overwrite(&mut self, list_id: u64, musics: Vec<MusicInfo>) {
+    fn music_overwrite(&mut self, list_id: u64, musics: Vec<MusicInfo>) {
         if let Some(target_list) = self.get_music_list(list_id) {
             *target_list = musics;
         }

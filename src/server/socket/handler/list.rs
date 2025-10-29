@@ -85,55 +85,55 @@ fn de_list_ids<'de, D: Deserializer<'de>>(de: D) -> Result<HashSet<u64>, D::Erro
 }
 
 impl JsonReqHandler for ListData {
-    async fn on(&mut self, action: serde_json::Value) {
+    fn on(&mut self, action: serde_json::Value) {
         match serde_json::from_value(action).unwrap() {
-            ListDataOverwrite(arg) => self.list_data_overwrite(arg).await,
-            ListCreate { position, infos } => self.list_create(position, infos).await,
-            ListRemove { to_remove } => self.list_remove(to_remove).await,
-            ListUpdate(arg) => self.list_update(arg).await,
-            ListUpdatePosition { ids, position } => self.list_sort(ids, position).await,
+            ListDataOverwrite(arg) => self.list_data_overwrite(arg),
+            ListCreate { position, infos } => self.list_create(position, infos),
+            ListRemove { to_remove } => self.list_remove(to_remove),
+            ListUpdate(arg) => self.list_update(arg),
+            ListUpdatePosition { ids, position } => self.list_sort(ids, position),
             ListMusicAdd {
                 id,
                 musics,
                 add_type,
-            } => self.music_add(id, musics, add_type).await,
+            } => self.music_add(id, musics, add_type),
             ListMusicMove {
                 src_list_id: src_id,
                 dst_list_id: dst_id,
                 musics,
                 add_type,
-            } => self.music_move(src_id, dst_id, musics, add_type).await,
-            ListMusicRemove { list_id, ids } => self.music_remove(list_id, ids).await,
+            } => self.music_move(src_id, dst_id, musics, add_type),
+            ListMusicRemove { list_id, ids } => self.music_remove(list_id, ids),
 
-            ListMusicUpdate(data) => self.music_update(data).await,
+            ListMusicUpdate(data) => self.music_update(data),
             ListMusicUpdatePosition {
                 list_id,
                 position,
                 ids,
-            } => self.music_sort(list_id, position, ids).await,
-            ListMusicOverwrite { list_id, musics } => self.music_overwrite(list_id, musics).await,
-            ListMusicClear { list_ids } => self.list_clear(list_ids).await,
+            } => self.music_sort(list_id, position, ids),
+            ListMusicOverwrite { list_id, musics } => self.music_overwrite(list_id, musics),
+            ListMusicClear { list_ids } => self.list_clear(list_ids),
         }
     }
 }
 
 pub(crate) trait ListSyncActionHandler {
-    async fn list_data_overwrite(&mut self, arg: ListData);
-    async fn list_create(&mut self, position: i64, infos: Vec<CustomListInfo>);
-    async fn list_remove(&mut self, to_remove: HashSet<u64>);
-    async fn list_update(&mut self, arg: Vec<CustomListInfo>);
-    async fn list_sort(&mut self, ids: HashSet<u64>, position: usize);
-    async fn list_clear(&mut self, list_ids: HashSet<u64>);
-    async fn music_add(&mut self, list_id: u64, musics: Vec<MusicInfo>, add_type: AddMusicLocation);
-    async fn music_move(
+    fn list_data_overwrite(&mut self, arg: ListData);
+    fn list_create(&mut self, position: i64, infos: Vec<CustomListInfo>);
+    fn list_remove(&mut self, to_remove: HashSet<u64>);
+    fn list_update(&mut self, arg: Vec<CustomListInfo>);
+    fn list_sort(&mut self, ids: HashSet<u64>, position: usize);
+    fn list_clear(&mut self, list_ids: HashSet<u64>);
+    fn music_add(&mut self, list_id: u64, musics: Vec<MusicInfo>, add_type: AddMusicLocation);
+    fn music_move(
         &mut self,
         src_list_id: u64,
         dst_list_id: u64,
         musics: Vec<MusicInfo>,
         add_type: AddMusicLocation,
     );
-    async fn music_remove(&mut self, list_id: u64, ids: HashSet<String>);
-    async fn music_update(&mut self, data: Vec<MusicUpdateInfo>);
-    async fn music_sort(&mut self, list_id: u64, position: usize, ids: HashSet<String>);
-    async fn music_overwrite(&mut self, list_id: u64, musics: Vec<MusicInfo>);
+    fn music_remove(&mut self, list_id: u64, ids: HashSet<String>);
+    fn music_update(&mut self, data: Vec<MusicUpdateInfo>);
+    fn music_sort(&mut self, list_id: u64, position: usize, ids: HashSet<String>);
+    fn music_overwrite(&mut self, list_id: u64, musics: Vec<MusicInfo>);
 }

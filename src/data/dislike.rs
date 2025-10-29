@@ -31,16 +31,16 @@ impl Data for DislikeData {
 }
 
 impl DislikeSyncActionHandler for DislikeData {
-    async fn on_overwrite(&mut self, data: DislikeData) {
+    fn on_overwrite(&mut self, data: DislikeData) {
         *self = data;
     }
 
-    async fn on_add(&mut self, data: Vec<(Name, Singer)>) {
+    fn on_add(&mut self, data: Vec<(Name, Singer)>) {
         let new_rules: Vec<String> = data.into_iter().map(format_to_rule).collect();
         self.push_str(&new_rules.join("\n"));
     }
 
-    async fn on_clear(&mut self) {
+    fn on_clear(&mut self) {
         *self = Self::default();
     }
 }

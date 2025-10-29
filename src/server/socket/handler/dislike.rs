@@ -13,17 +13,17 @@ pub(crate) enum DislikeSyncAction {
 }
 
 impl JsonReqHandler for DislikeData {
-    async fn on(&mut self, e: serde_json::Value) {
+    fn on(&mut self, e: serde_json::Value) {
         match serde_json::from_value(e).unwrap() {
-            DislikeSyncAction::Overwrite(data) => self.on_overwrite(data).await,
-            DislikeSyncAction::Add(data) => self.on_add(data).await,
-            DislikeSyncAction::Clear => self.on_clear().await,
+            DislikeSyncAction::Overwrite(data) => self.on_overwrite(data),
+            DislikeSyncAction::Add(data) => self.on_add(data),
+            DislikeSyncAction::Clear => self.on_clear(),
         }
     }
 }
 
 pub(crate) trait DislikeSyncActionHandler {
-    async fn on_overwrite(&mut self, data: DislikeData);
-    async fn on_add(&mut self, arg: Vec<(Name, Singer)>);
-    async fn on_clear(&mut self);
+    fn on_overwrite(&mut self, data: DislikeData);
+    fn on_add(&mut self, arg: Vec<(Name, Singer)>);
+    fn on_clear(&mut self);
 }

@@ -6,5 +6,5 @@ mod dislike;
 mod list;
 
 pub(crate) trait JsonReqHandler {
-    async fn on(&mut self, e: serde_json::Value);
+    fn on(&mut self, e: serde_json::Value);
 }
