@@ -12,7 +12,7 @@ use tokio::time::interval;
 pub(crate) mod socket;
 mod sync;
 
-pub(crate) static SERVER_CONTEXT: LazyLock<ServerContext> = LazyLock::new(|| ServerContext::new());
+pub(crate) static SERVER_CONTEXT: LazyLock<ServerContext> = LazyLock::new(ServerContext::new);
 
 pub(crate) struct ServerContext {
     auth_failed_ips: RwCounter<String>,
@@ -30,7 +30,7 @@ impl ServerContext {
             let user_path = USERS_PATH.join(username);
             let devices_infos_path = user_path.join("devices.json").leak();
             let infos = DevicesInfos::load(devices_infos_path);
-            infos.register_each_device(&mut device_user_map, &username);
+            infos.register_each_device(&mut device_user_map, username);
             user_space_map.insert(
                 username.as_str(),
                 UserSpace::new(username, user_path.into(), infos, devices_infos_path),
@@ -49,7 +49,7 @@ impl ServerContext {
         self.device_username_map.store(Arc::new(new_map));
     }
 
-    pub(crate) async fn get_ip(
+    pub(crate) fn get_ip(
         &self,
         headers: &HeaderMap,
         addr: SocketAddr,
@@ -62,7 +62,7 @@ impl ServerContext {
             addr.ip().to_string()
         };
 
-        if self.auth_failed_ips.count(&ip).await < 20 {
+        if self.auth_failed_ips.count(&ip) < 20 {
             Ok(ip)
         } else {
             Err(BlockedIPError)
@@ -83,8 +83,8 @@ impl ServerContext {
             .get(self.device_username_map.load().get(client_id)?)
     }
 
-    pub(crate) async fn record_auth_failed_ip(&self, ip: &String) {
-        self.auth_failed_ips.increase(ip.clone()).await;
+    pub(crate) fn record_auth_failed_ip(&self, ip: &String) {
+        self.auth_failed_ips.increase(ip.clone());
     }
 
     pub(crate) fn start_daemon(&'static self) {
@@ -92,7 +92,7 @@ impl ServerContext {
             let mut clean_expired_ip_record = interval(Duration::from_secs(3600));
             loop {
                 clean_expired_ip_record.tick().await;
-                self.auth_failed_ips.cleanup().await;
+                self.auth_failed_ips.cleanup();
             }
         });
     }

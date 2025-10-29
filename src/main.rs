@@ -27,11 +27,11 @@ async fn server_id() -> String {
 }
 
 async fn auth_code(headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>) -> Response {
-    let Ok(ip) = SERVER_CONTEXT.get_ip(&headers, addr).await else {
+    let Ok(ip) = SERVER_CONTEXT.get_ip(&headers, addr) else {
         return (StatusCode::FORBIDDEN, "Blocked IP").into_response();
     };
     let Some(msg) = headers.get("m") else {
-        SERVER_CONTEXT.record_auth_failed_ip(&ip).await;
+        SERVER_CONTEXT.record_auth_failed_ip(&ip);
         return (StatusCode::UNAUTHORIZED, "Auth failed").into_response();
     };
     let msg = msg.to_str().unwrap();
@@ -86,7 +86,7 @@ async fn websocket(
         return (StatusCode::NOT_FOUND, "The user does not exist").into_response();
     };
 
-    let Some(device_info) = user_space.get_client_device_info(client_id).await else {
+    let Some(device_info) = user_space.get_client_device_info(client_id) else {
         return (StatusCode::BAD_REQUEST, "missing ?i=clientId").into_response();
     };
     ws.on_upgrade(|socket| handle_socket(socket, username, device_info, socket_state))

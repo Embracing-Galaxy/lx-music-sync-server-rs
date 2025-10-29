@@ -26,7 +26,7 @@ impl<DATA: Data> DataManager<DATA> {
         let snapshot_info: SnapshotInfo = load_or_create(info_path);
         let current_list_data = match snapshot_info.latest_key {
             None => DATA::default(),
-            Some(key) => Self::get_snapshot_from_key(&path, key).unwrap_or_default(),
+            Some(key) => Self::get_snapshot_from_key(path, key).unwrap_or_default(),
         };
         Self {
             current_data: RwLock::new(current_list_data),

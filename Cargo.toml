@@ -28,3 +28,6 @@ criterion = "0.3"
 [[bench]]
 name = "benchmark"
 harness = false
+
+[lints.clippy]
+unused_async = "warn"

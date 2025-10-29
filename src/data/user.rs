@@ -32,11 +32,11 @@ impl UserSpace {
         }
     }
 
-    pub(crate) async fn get_client_device_info(&self, id: &str) -> Option<Arc<DeviceInfo>> {
+    pub(crate) fn get_client_device_info(&self, id: &str) -> Option<Arc<DeviceInfo>> {
         self.user_data.devices_infos.clients.load().get(id).cloned()
     }
 
-    pub(crate) async fn update_device_name(&self, id: &ClientId, device_name: &str) {
+    pub(crate) fn update_device_name(&self, id: &ClientId, device_name: &str) {
         let guard = self.user_data.devices_infos.clients.load();
         let device_info = guard.get(id).unwrap();
         if device_info.device_name.load().as_str() != device_name {
@@ -93,7 +93,7 @@ pub(crate) struct DevicesInfos {
 
 impl DevicesInfos {
     pub(crate) fn load(path: &Path) -> &'static Self {
-        let deserialized: Vec<DeviceInfo> = load_or_create(path.as_ref());
+        let deserialized: Vec<DeviceInfo> = load_or_create(path);
 
         let result = Self {
             clients: ArcSwap::from_pointee(

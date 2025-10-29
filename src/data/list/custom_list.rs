@@ -69,8 +69,8 @@ impl CustomListInfo {
 }
 
 fn combine_without_duplication(
-    a: &Vec<MusicInfo>,
-    b: &Vec<MusicInfo>,
+    a: &[MusicInfo],
+    b: &[MusicInfo],
     add_location: &AddMusicLocation,
 ) -> Vec<MusicInfo> {
     let base = a.iter().cloned();

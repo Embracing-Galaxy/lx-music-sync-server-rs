@@ -129,9 +129,9 @@ impl Data for ListData {
 }
 
 fn merge_vec(
-    current: &Vec<MusicInfo>,
-    client: &Vec<MusicInfo>,
-    snapshot: &Vec<MusicInfo>,
+    current: &[MusicInfo],
+    client: &[MusicInfo],
+    snapshot: &[MusicInfo],
     add_location: &AddMusicLocation,
 ) -> Vec<MusicInfo> {
     let current_ids: HashSet<&str> = current.iter().map(MusicInfo::get_id).collect();

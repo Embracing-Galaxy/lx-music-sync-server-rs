@@ -10,7 +10,7 @@ pub fn now_ms() -> u128 {
         .as_millis()
 }
 
-pub fn load_or_create<'a, T: Default + DeserializeOwned + Serialize>(path: &Path) -> T {
+pub fn load_or_create<T: Default + DeserializeOwned + Serialize>(path: &Path) -> T {
     if path.exists() {
         let bytes = fs::read(path).expect(format!("Failed to read {:?}", path).as_str());
         serde_json::from_slice(&bytes).expect(format!("Failed to deserialize {:?}", path).as_str())
@@ -43,7 +43,7 @@ impl<T: Eq + Hash> RwCounter<T> {
         }
     }
 
-    pub(crate) async fn increase(&self, key: T) {
+    pub(crate) fn increase(&self, key: T) {
         match self.map.entry(key) {
             Entry::Occupied(mut e) => {
                 let (count, time) = e.get_mut();
@@ -56,14 +56,14 @@ impl<T: Eq + Hash> RwCounter<T> {
         }
     }
 
-    pub(crate) async fn count(&self, key: &T) -> usize {
+    pub(crate) fn count(&self, key: &T) -> usize {
         match self.map.get(key) {
             Some(entry) => entry.0,
             None => 0,
         }
     }
 
-    pub(crate) async fn cleanup(&self) {
+    pub(crate) fn cleanup(&self) {
         let now = Instant::now();
         let Some(deadline) = now.checked_sub(Self::TTL) else {
             // TODO "Make `last_used` persistent"
@@ -137,7 +137,7 @@ pub mod crypto {
         let mut rng = rand::rng();
         let mut buf = [0u8; 16];
         rng.fill(&mut buf);
-        BASE64_STANDARD.encode(&buf)
+        BASE64_STANDARD.encode(buf)
     }
 
     pub fn aes_encrypt_with_base64(data: &str, key: &str) -> String {

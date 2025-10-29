@@ -19,7 +19,7 @@ pub(crate) async fn auth_by_key(
     user_space: Option<&UserSpace>,
 ) -> Result<String, &'static str> {
     let (user_space, device_info) = if let Some(user_space) = user_space
-        && let Some(device_info) = user_space.get_client_device_info(client_id).await
+        && let Some(device_info) = user_space.get_client_device_info(client_id)
     {
         (user_space, device_info)
     } else {
@@ -32,7 +32,7 @@ pub(crate) async fn auth_by_key(
     }
 
     let device_name = &text[AUTH_HEAD_LENGTH..];
-    user_space.update_device_name(client_id, device_name).await;
+    user_space.update_device_name(client_id, device_name);
     Ok(aes_encrypt_with_base64("Hello~::^-^::~v4~", key))
 }
 

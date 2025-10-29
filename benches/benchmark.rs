@@ -41,7 +41,7 @@ impl B {
     }
 }
 
-fn map_merge(a_vec: &mut Vec<A>, b_vec: Vec<B>) {
+fn map_merge(a_vec: &mut [A], b_vec: Vec<B>) {
     let mut map: HashMap<u64, B> = b_vec.into_iter().map(|b| (b.id, b)).collect();
 
     for a in a_vec.iter_mut() {
@@ -57,7 +57,7 @@ fn map_merge(a_vec: &mut Vec<A>, b_vec: Vec<B>) {
     }
 }
 
-fn sparse_merge(a_vec: &mut Vec<A>, b_vec: Vec<B>) {
+fn sparse_merge(a_vec: &mut [A], b_vec: Vec<B>) {
     let map: HashMap<u64, usize> = b_vec.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
     let mut b_sparse: Vec<Option<B>> = b_vec.into_iter().map(Some).collect();
 
@@ -73,7 +73,7 @@ fn sparse_merge(a_vec: &mut Vec<A>, b_vec: Vec<B>) {
 }
 
 pub fn bench(c: &mut Criterion) {
-    let a_vec = (1..21).map(|i| A::gen_old(i)).collect::<Vec<_>>();
+    let a_vec = (1..21).map(A::gen_old).collect::<Vec<_>>();
     let b_vec = vec![B::gen_new(2), B::gen_new(3)];
     let data = (a_vec, b_vec);
 

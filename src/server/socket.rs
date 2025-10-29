@@ -10,7 +10,7 @@ use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use dto::{EnabledFeatures, Req, Resp};
 use futures_util::{stream::SplitSink, stream::SplitStream, SinkExt, StreamExt};
-use log::{debug, info, trace, warn};
+use log::{info, trace, warn};
 use serde_json::json;
 use std::fmt::Formatter;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -130,13 +130,13 @@ impl SocketContext {
                     "onListSyncAction" => {
                         if self.list_ready.load(Ordering::Relaxed) {
                             let key = user.list.on_sync(data).await;
-                            self.broadcast(DataType::LIST, action, key).await;
+                            self.broadcast(DataType::LIST, action, key);
                         }
                     }
                     "onDislikeSyncAction" => {
                         if self.dislike_ready.load(Ordering::Relaxed) {
                             let key = user.dislike.on_sync(data).await;
-                            self.broadcast(DataType::DISLIKE, action, key).await;
+                            self.broadcast(DataType::DISLIKE, action, key);
                         }
                     }
                     _ => warn!("unsupported req: {req_name}"),
@@ -152,7 +152,7 @@ impl SocketContext {
         }
     }
 
-    pub(crate) async fn broadcast(
+    pub(crate) fn broadcast(
         &self,
         data_type: DataType,
         data: serde_json::Value,
@@ -214,11 +214,6 @@ async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Ar
                 } else {
                     text.as_bytes().to_vec()
                 };
-                trace!(
-                    "{:?} received data:{}",
-                    context,
-                    String::from_utf8_lossy(&data)
-                );
                 context.on_message_string(&data).await;
             }
             Message::Pong(_) => {
