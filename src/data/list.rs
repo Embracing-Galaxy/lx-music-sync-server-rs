@@ -134,9 +134,6 @@ fn merge_vec(
     snapshot: &Vec<MusicInfo>,
     add_location: &AddMusicLocation,
 ) -> Vec<MusicInfo> {
-    debug_assert!(!current.is_empty());
-    debug_assert!(!client.is_empty());
-
     let current_ids: HashSet<&str> = current.iter().map(MusicInfo::get_id).collect();
     let client_ids: HashSet<&str> = client.iter().map(MusicInfo::get_id).collect();
     let deleted_ids: HashSet<&str> = snapshot

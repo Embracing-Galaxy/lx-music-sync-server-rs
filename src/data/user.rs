@@ -103,7 +103,7 @@ impl DevicesInfos {
                     .collect(),
             ),
         };
-        unsafe { std::mem::transmute(result) }
+        Box::leak(Box::new(result))
     }
 
     pub(crate) fn register_each_device(

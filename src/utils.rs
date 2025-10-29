@@ -106,7 +106,7 @@ pub mod crypto {
     };
     use rand::Rng;
 
-    pub type MD5 = [u8; 16];
+    pub type MD5 = u128;
 
     pub fn to_md5(data: impl AsRef<[u8]>) -> MD5 {
         let bytes: Vec<u8> = hash(MessageDigest::md5(), data.as_ref())
@@ -114,7 +114,7 @@ pub mod crypto {
             .iter()
             .copied()
             .collect();
-        bytes.try_into().unwrap()
+        u128::from_be_bytes(bytes.try_into().unwrap())
     }
 
     pub fn hex_to_md5(hex_str: &str) -> MD5 {
@@ -124,15 +124,13 @@ pub mod crypto {
             .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16))
             .collect::<Result<Vec<_>, _>>()
             .expect("hex decode error");
-        bytes.try_into().unwrap()
+        u128::from_be_bytes(bytes.try_into().unwrap())
     }
 
-    pub fn md5_to_hex(data: &MD5, length: usize) -> String {
-        debug_assert!(length <= 32);
-        data[..(length >> 1)]
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect()
+    pub fn md5_to_hex(data: MD5) -> String {
+        // Note that this is parsed in big-endian order,
+        // so MD5 should also be parsed in big-endian order.
+        format!("{:032x}", data)
     }
 
     pub fn rand_16bytes_as_base64() -> String {

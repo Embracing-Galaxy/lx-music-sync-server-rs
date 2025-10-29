@@ -10,7 +10,7 @@ use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use dto::{EnabledFeatures, Req, Resp};
 use futures_util::{stream::SplitSink, stream::SplitStream, SinkExt, StreamExt};
-use log::{info, trace};
+use log::{debug, info, trace, warn};
 use serde_json::json;
 use std::fmt::Formatter;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -124,7 +124,9 @@ impl SocketContext {
                 // already checked in main
                 let user = SERVER_CONTEXT.get_user_space(self.username).unwrap();
                 let action = serde_json::from_slice(msg).unwrap();
-                match req.name.as_str() {
+                let req_name = req.name.split("__").next().unwrap();
+                debug!("get action: {action}");
+                match req_name {
                     "onListSyncAction" => {
                         if self.list_ready.load(Ordering::Relaxed) {
                             let key = user.list.on_sync(req.data).await;
@@ -137,7 +139,7 @@ impl SocketContext {
                             self.broadcast(DataType::DISLIKE, action, key).await;
                         }
                     }
-                    _ => todo!("unsupported"),
+                    _ => warn!("unsupported req: {req_name}"),
                 }
             }
             IncomingMsg::Resp(resp) => {

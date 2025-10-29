@@ -25,7 +25,7 @@ impl<DATA: Data> DataManager<DATA> {
         let snapshot_info: SnapshotInfo = load_or_create(info_path);
         let current_list_data = match snapshot_info.latest_key {
             None => DATA::default(),
-            Some(key) => Self::get_snapshot_from_key(&path, &key).unwrap_or_default(),
+            Some(key) => Self::get_snapshot_from_key(&path, key).unwrap_or_default(),
         };
         Self {
             current_data: RwLock::new(current_list_data),
@@ -38,11 +38,11 @@ impl<DATA: Data> DataManager<DATA> {
     /// Get the snapshot of the last sync of the given client
     pub(crate) async fn get_snapshot(&self, client_id: &ClientId) -> Option<DATA> {
         let key = self.get_snapshot_key(client_id).await?;
-        Self::get_snapshot_from_key(&self.path, &key)
+        Self::get_snapshot_from_key(&self.path, key)
     }
 
-    fn get_snapshot_from_key(user_path: &Path, key: &SnapshotKey) -> Option<DATA> {
-        let bytes = std::fs::read(user_path.join(md5_to_hex(key, 32))).ok()?;
+    fn get_snapshot_from_key(user_path: &Path, key: SnapshotKey) -> Option<DATA> {
+        let bytes = std::fs::read(user_path.join(md5_to_hex(key))).ok()?;
         serde_json::from_slice(&bytes).ok()
     }
 
@@ -72,14 +72,10 @@ impl<DATA: Data> DataManager<DATA> {
 
         if self.snapshot_info.write().await.try_insert_key(key) {
             // async write snapshot content
-            let path = self.path.join(md5_to_hex(&key, 32));
+            let path = self.path.join(md5_to_hex(key));
             tokio::spawn(tokio::fs::write(path, bytes));
         };
-        // async write snapshot info
-        // TODO throttle
-        let info = serde_json::to_vec(&*self.snapshot_info.read().await).unwrap();
-        tokio::spawn(tokio::fs::write(self.info_path, info));
-
+        self.write_snapshot_info().await;
         key
     }
 
@@ -121,6 +117,13 @@ impl<DATA: Data> DataManager<DATA> {
 
     pub(crate) async fn update_snapshot_key(&self, client_id: &ClientId, key: SnapshotKey) {
         self.snapshot_info.write().await.update(client_id, key);
+        self.write_snapshot_info().await;
+    }
+
+    async fn write_snapshot_info(&self) {
+        // TODO throttle
+        let info = serde_json::to_vec_pretty(&*self.snapshot_info.read().await).unwrap();
+        tokio::spawn(tokio::fs::write(self.info_path, info));
     }
 }
 
