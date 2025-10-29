@@ -24,10 +24,10 @@ impl ListSyncActionHandler for ListData {
         *self = data;
     }
 
-    fn list_create(&mut self, position: i64, infos: Vec<CustomListInfo>) {
+    fn list_create(&mut self, position: i64, mut infos: Vec<CustomListInfo>) {
         let position = usize::try_from(position).unwrap_or(0);
         if infos.len() == 1 {
-            let info = infos.into_iter().next().unwrap();
+            let info = infos.pop().unwrap();
             if self.custom_lists.iter().any(|list| list.id() == info.id) {
                 return;
             }
@@ -74,9 +74,9 @@ impl ListSyncActionHandler for ListData {
         }
     }
 
-    fn list_update(&mut self, infos: Vec<CustomListInfo>) {
+    fn list_update(&mut self, mut infos: Vec<CustomListInfo>) {
         if infos.len() == 1 {
-            let info = infos.into_iter().next().unwrap();
+            let info = infos.pop().unwrap();
             if let Some(pos) = self
                 .custom_lists
                 .iter()
@@ -150,9 +150,9 @@ impl ListSyncActionHandler for ListData {
         };
     }
 
-    fn music_update(&mut self, data: Vec<MusicUpdateInfo>) {
+    fn music_update(&mut self, mut data: Vec<MusicUpdateInfo>) {
         if data.len() == 1 {
-            let MusicUpdateInfo { id: list_id, music } = data.into_iter().next().unwrap();
+            let MusicUpdateInfo { id: list_id, music } = data.pop().unwrap();
             if let Some(target_list) = self.get_music_list(list_id) {
                 target_list
                     .iter_mut()

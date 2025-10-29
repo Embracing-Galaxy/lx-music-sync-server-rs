@@ -120,12 +120,12 @@ impl SocketContext {
         };
 
         match incoming_msg {
-            IncomingMsg::Req(req) => {
+            IncomingMsg::Req(mut req) => {
                 // already checked in main
                 let user = SERVER_CONTEXT.get_user_space(self.username).unwrap();
                 let action = serde_json::from_slice(msg).unwrap();
                 let req_name = req.name.split("__").next().unwrap();
-                let data = unsafe { std::ptr::read(req.data.as_ptr()) };
+                let data = req.data.pop().unwrap();
                 match req_name {
                     "onListSyncAction" => {
                         if self.list_ready.load(Ordering::Relaxed) {

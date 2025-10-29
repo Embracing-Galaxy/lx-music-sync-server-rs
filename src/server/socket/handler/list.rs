@@ -3,6 +3,7 @@ use crate::data::config::AddMusicLocation;
 use crate::data::list::{de_list_id, CustomListInfo, ListData, MusicInfo};
 use serde::Deserializer;
 use std::collections::HashSet;
+use log::debug;
 use ListSyncAction::*;
 
 #[derive(Deserialize)]
@@ -86,6 +87,7 @@ fn de_list_ids<'de, D: Deserializer<'de>>(de: D) -> Result<HashSet<u64>, D::Erro
 
 impl JsonReqHandler for ListData {
     fn on(&mut self, action: serde_json::Value) {
+        debug!("get action: {action}");
         match serde_json::from_value(action).unwrap() {
             ListDataOverwrite(arg) => self.list_data_overwrite(arg),
             ListCreate { position, infos } => self.list_create(position, infos),
@@ -114,6 +116,7 @@ impl JsonReqHandler for ListData {
             ListMusicOverwrite { list_id, musics } => self.music_overwrite(list_id, musics),
             ListMusicClear { list_ids } => self.list_clear(list_ids),
         }
+        debug!("Action handled");
     }
 }
 

@@ -2,7 +2,6 @@ use crate::data::{config::AddMusicLocation, ClientId, SnapshotInfo, SnapshotKey}
 use crate::server::socket::handler::JsonReqHandler;
 use crate::utils::crypto::{md5_to_hex, to_md5};
 use crate::utils::load_or_create;
-use log::debug;
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
 use tokio::sync::RwLock;
@@ -112,7 +111,6 @@ impl<DATA: Data> DataManager<DATA> {
     }
 
     pub(crate) async fn on_sync(&self, action: serde_json::Value) -> SnapshotKey {
-        debug!("get action: {action}");
         self.current_data.write().await.on(action);
         self.save_snapshot().await
     }
