@@ -12,7 +12,7 @@ pub(super) enum IncomingMsg {
 pub(super) struct Req {
     pub(super) name: String,
     path: Vec<String>,
-    pub(super) data: serde_json::Value,
+    pub(super) data: Vec<serde_json::Value>,
 }
 
 impl Req {
@@ -20,7 +20,7 @@ impl Req {
         let req = Self {
             name: format!("{}__{}", name, rand::random::<u8>()),
             path: vec![name.to_string()],
-            data: serde_json::Value::Array(data),
+            data,
         };
         (req.name.clone(), req)
     }

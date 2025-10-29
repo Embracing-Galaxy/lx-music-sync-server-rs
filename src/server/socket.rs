@@ -126,16 +126,17 @@ impl SocketContext {
                 let action = serde_json::from_slice(msg).unwrap();
                 let req_name = req.name.split("__").next().unwrap();
                 debug!("get action: {action}");
+                let data = unsafe { std::ptr::read(req.data.as_ptr()) };
                 match req_name {
                     "onListSyncAction" => {
                         if self.list_ready.load(Ordering::Relaxed) {
-                            let key = user.list.on_sync(req.data).await;
+                            let key = user.list.on_sync(data).await;
                             self.broadcast(DataType::LIST, action, key).await;
                         }
                     }
                     "onDislikeSyncAction" => {
                         if self.dislike_ready.load(Ordering::Relaxed) {
-                            let key = user.dislike.on_sync(req.data).await;
+                            let key = user.dislike.on_sync(data).await;
                             self.broadcast(DataType::DISLIKE, action, key).await;
                         }
                     }
@@ -232,7 +233,7 @@ async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Ar
 async fn handle_broadcast(context: SocketContext, mut rx: Subscriber) {
     while let Ok((client_id, name, data, data_type, key)) = rx.recv().await {
         if context.client_id == client_id
-            || match data_type {
+            || !match data_type {
                 DataType::LIST => context.list_ready.load(Ordering::Relaxed),
                 DataType::DISLIKE => context.dislike_ready.load(Ordering::Relaxed),
             }
