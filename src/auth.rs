@@ -62,7 +62,7 @@ pub(crate) async fn auth_by_code(encrypt_msg: &str) -> Result<String, &'static s
             ),
             &public_key,
         );
-        info!("Device {:?} first connected", device_info);
+        info!("Device {:?} first connected.", device_info);
         user_space.insert_device_info(device_info);
         return Ok(result);
     }

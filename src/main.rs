@@ -99,14 +99,17 @@ async fn fallback() -> (StatusCode, &'static str) {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let log_level = if cfg!(debug_assertions) {
+    const VERSION: &str = env!("CARGO_PKG_VERSION");
+    const LOG_LEVEL: &str = if cfg!(debug_assertions) {
         "debug"
     } else {
         "info"
     };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level))
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(LOG_LEVEL))
         .target(env_logger::Target::Stdout)
         .init();
+    info!("Welcome to LX Music Sync Server(rs) {VERSION}.");
+
     SERVER_CONTEXT.start_daemon();
     let connections = ConnectionMap::default();
     let (tx, _) = broadcast::channel(16);
