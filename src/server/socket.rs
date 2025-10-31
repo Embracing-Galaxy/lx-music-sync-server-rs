@@ -16,6 +16,7 @@ use std::fmt::Formatter;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use serde::Serialize;
 use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinSet;
 use tokio::time::interval;
@@ -65,6 +66,17 @@ impl SocketContext {
         self.dislike_ready.store(true, Ordering::Relaxed);
     }
 
+    async fn send<T: Serialize>(&self, text: &T) {
+        let req = serde_json::to_string(text).unwrap();
+        let message = if req.len() > 1024 {
+            Message::Text(format!("cg_{}", gzip_base64(req)).into())
+        } else {
+            Message::Text(req.into())
+        };
+        let mut lock = self.sender.lock().await;
+        lock.send(message).await.expect("Failed to send message");
+    }
+
     /// Send a request, returns: the callback
     ///
     /// # Arguments
@@ -86,12 +98,7 @@ impl SocketContext {
     ) -> oneshot::Receiver<Resp> {
         trace!("request: {}", name);
         let (key, req) = Req::new(name, data);
-        let text = req.to_json();
-        let message = Self::zip_req(text);
-        {
-            let mut lock = self.sender.lock().await;
-            lock.send(message).await.expect("Failed to send message");
-        }
+        self.send(&req).await;
         let (tx, rx) = oneshot::channel();
         self.callbacks.insert(key, tx);
         rx
@@ -100,18 +107,7 @@ impl SocketContext {
     pub(crate) async fn post(&self, name: &str, data: Vec<serde_json::Value>) {
         trace!("request without callback: {}", name);
         let (_, req) = Req::new(name, data);
-        let text = req.to_json();
-        let message = Self::zip_req(text);
-        let mut lock = self.sender.lock().await;
-        lock.send(message).await.expect("Failed to send message");
-    }
-
-    fn zip_req(req: String) -> Message {
-        if req.len() > 1024 {
-            Message::Text(format!("cg_{}", gzip_base64(req)).into())
-        } else {
-            Message::Text(req.into())
-        }
+        self.send(&req).await;
     }
 
     pub(crate) async fn on_message_string(&self, msg: &[u8]) {
@@ -141,6 +137,7 @@ impl SocketContext {
                     }
                     _ => warn!("unsupported req: {req_name}"),
                 }
+                self.send(&Resp::gen_empty(req.name)).await;
             }
             IncomingMsg::Resp(resp) => {
                 if let Some((_, tx)) = self.callbacks.remove(&resp.name)

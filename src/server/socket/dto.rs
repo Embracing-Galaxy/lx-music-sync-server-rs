@@ -24,21 +24,26 @@ impl Req {
         };
         (req.name.clone(), req)
     }
-
-    pub(super) fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap()
-    }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(in crate::server) struct Resp {
     /// the response event name, the same as the corresponding request name
     pub(super) name: String,
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<serde_json::Value>,
 }
 
 impl Resp {
+    pub(in crate::server) fn gen_empty(name: String) -> Self {
+        Self {
+            name,
+            error: None,
+            data: None,
+        }
+    }
+
     pub(in crate::server) fn get_data<T: serde::de::DeserializeOwned>(self) -> Option<T> {
         if let Some(err) = self.error {
             panic!("client response with err: {err}");

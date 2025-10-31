@@ -116,7 +116,6 @@ impl JsonReqHandler for ListData {
             ListMusicOverwrite { list_id, musics } => self.music_overwrite(list_id, musics),
             ListMusicClear { list_ids } => self.list_clear(list_ids),
         }
-        debug!("Action handled");
     }
 }
 
