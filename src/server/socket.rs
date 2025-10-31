@@ -1,7 +1,7 @@
-use crate::data::manager::DataType;
+use crate::data::manager::{DataType, SnapshotKey};
 use crate::server::socket::dto::IncomingMsg;
 use crate::{
-    data::{config::CONFIG, user::DeviceInfo, ClientId, SnapshotKey, Username}, server::SERVER_CONTEXT, utils::{gzip_base64, ungzip_base64},
+    data::{config::CONFIG, user::DeviceInfo, ClientId, Username}, server::SERVER_CONTEXT, utils::{gzip_base64, ungzip_base64},
     Broadcaster,
     ServerState,
     Subscriber,

@@ -4,7 +4,7 @@ use crate::server::socket::SocketContext;
 
 pub(super) async fn sync_once(
     socket: &SocketContext,
-    user_space: &UserSpace,
+    user_space: &'static UserSpace,
     add_location: &AddMusicLocation,
 ) {
     list::sync_once(socket, user_space, add_location).await;

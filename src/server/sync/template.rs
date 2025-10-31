@@ -1,13 +1,13 @@
 macro_rules! sync_once_for {
     ($name:ident) => {
-        use crate::data::{config::AddMusicLocation, manager::DataType, user::UserSpace,  SnapshotKey};
+        use crate::data::{config::AddMusicLocation, manager::{DataType, SnapshotKey}, user::UserSpace};
         use crate::server::socket::SocketContext;
         use crate::utils::crypto::{hex_to_md5, MD5};
         use paste::paste;
 
         pub(super) async fn sync_once(
             socket: &SocketContext,
-            user_space: &UserSpace,
+            user_space: &'static UserSpace,
             add_location: &AddMusicLocation,
         ) {
             let callback = socket.request(concat!(stringify!($name), "_sync_get_list_data"), vec![]).await;
@@ -61,7 +61,7 @@ macro_rules! sync_once_for {
         }
 
         #[inline]
-        async fn latest(socket: &SocketContext, user_space: &UserSpace) -> bool {
+        async fn latest(socket: &SocketContext, user_space: &'static UserSpace) -> bool {
             let client_md5 = get_client_md5(socket).await;
             let client_id = &socket.client_id;
             let snapshot_key = user_space.$name.get_snapshot_key(client_id).await;

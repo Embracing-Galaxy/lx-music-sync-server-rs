@@ -1,10 +1,13 @@
-use crate::data::{config::AddMusicLocation, ClientId, SnapshotInfo, SnapshotKey};
+use crate::data::{config::AddMusicLocation, ClientId};
 use crate::server::socket::handler::JsonReqHandler;
-use crate::utils::crypto::{md5_to_hex, to_md5};
-use crate::utils::load_or_create;
-use serde::{de::DeserializeOwned, Serialize};
+use crate::utils::crypto::{md5_to_hex, to_md5, MD5};
+use crate::utils::{load_or_create, now_ms};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use tokio::sync::RwLock;
+use std::time::{Duration, Instant};
+use tokio::sync::{Mutex, RwLock};
+use tokio::time::sleep;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum DataType {
@@ -12,14 +15,18 @@ pub(crate) enum DataType {
     DISLIKE,
 }
 
-pub(crate) struct DataManager<DATA: Data> {
+pub(crate) struct DataManager<DATA: Data + Send + Sync> {
     path: Box<Path>,
     info_path: &'static Path,
     snapshot_info: RwLock<SnapshotInfo>,
     current_data: RwLock<DATA>,
+    info_last_save: Mutex<Instant>,
 }
 
-impl<DATA: Data> DataManager<DATA> {
+const DEBOUNCE: Duration = Duration::from_secs(30);
+const MIN_INTERVAL: Duration = Duration::from_secs(120);
+
+impl<DATA: Data + Send + Sync> DataManager<DATA> {
     pub(super) fn new(path: &Path) -> Self {
         let info_path = path.join("snapshotInfo.json").leak();
         let snapshot_info: SnapshotInfo = load_or_create(info_path);
@@ -32,6 +39,7 @@ impl<DATA: Data> DataManager<DATA> {
             path: path.into(),
             info_path,
             snapshot_info: RwLock::new(snapshot_info),
+            info_last_save: Mutex::new(Instant::now() - MIN_INTERVAL),
         }
     }
 
@@ -46,7 +54,7 @@ impl<DATA: Data> DataManager<DATA> {
         serde_json::from_slice(&bytes).ok()
     }
 
-    pub(crate) async fn get_info_key(&self) -> SnapshotKey {
+    pub(crate) async fn get_info_key(&'static self) -> SnapshotKey {
         match self.snapshot_info.read().await.latest_key {
             None => self.save_snapshot().await, // latest_key would update inside the `save_snapshot`
             Some(latest) => latest,
@@ -62,7 +70,7 @@ impl<DATA: Data> DataManager<DATA> {
             .cloned()
     }
 
-    async fn create_snapshot(&self, bytes: Vec<u8>) -> SnapshotKey {
+    async fn create_snapshot(&'static self, bytes: Vec<u8>) -> SnapshotKey {
         let key = to_md5(&bytes);
         if let Some(latest_key) = self.snapshot_info.read().await.latest_key
             && latest_key == key
@@ -79,13 +87,13 @@ impl<DATA: Data> DataManager<DATA> {
         key
     }
 
-    async fn save_snapshot(&self) -> SnapshotKey {
+    async fn save_snapshot(&'static self) -> SnapshotKey {
         let bytes = serde_json::to_vec(&*self.current_data.read().await).unwrap();
         self.create_snapshot(bytes).await
     }
 
     pub(crate) async fn merge(
-        &self,
+        &'static self,
         client_id: &ClientId,
         client: &DATA,
         snapshot: &DATA,
@@ -100,7 +108,7 @@ impl<DATA: Data> DataManager<DATA> {
         (bytes.clone(), self.create_snapshot(bytes).await)
     }
 
-    pub(crate) async fn overwrite_from_client(&self, client_id: &ClientId, data: DATA) {
+    pub(crate) async fn overwrite_from_client(&'static self, client_id: &ClientId, data: DATA) {
         if data.is_empty() {
             return;
         }
@@ -110,24 +118,64 @@ impl<DATA: Data> DataManager<DATA> {
         self.create_snapshot(bytes).await;
     }
 
-    pub(crate) async fn on_sync(&self, action: serde_json::Value) -> SnapshotKey {
+    pub(crate) async fn on_sync(&'static self, action: serde_json::Value) -> SnapshotKey {
         self.current_data.write().await.on(action);
         self.save_snapshot().await
     }
 
-    pub(crate) async fn update_snapshot_key(&self, client_id: &ClientId, key: SnapshotKey) {
+    pub(crate) async fn update_snapshot_key(&'static self, client_id: &ClientId, key: SnapshotKey) {
         self.snapshot_info.write().await.update(client_id, key);
         self.write_snapshot_info().await;
     }
 
-    async fn write_snapshot_info(&self) {
-        // TODO throttle
+    async fn write_snapshot_info(&'static self) {
+        let last_save = self.info_last_save.lock().await;
+        let now = Instant::now();
+        let duration = now.duration_since(*last_save);
+        if duration < MIN_INTERVAL {
+            return;
+        }
+        drop(last_save);
+        tokio::spawn(self.write_snapshot_info_debounce());
+    }
+
+    async fn write_snapshot_info_debounce(&'static self) {
+        sleep(DEBOUNCE).await;
+        let mut last_save = self.info_last_save.lock().await;
         let info = serde_json::to_vec_pretty(&*self.snapshot_info.read().await).unwrap();
-        tokio::spawn(tokio::fs::write(self.info_path, info));
+        tokio::fs::write(self.info_path, info).await.unwrap();
+        *last_save = Instant::now();
     }
 }
 
 pub(crate) trait Data: Default + Serialize + DeserializeOwned + JsonReqHandler {
     fn is_empty(&self) -> bool;
     fn merge(&mut self, client: &Self, snapshot: &Self, add_location: &AddMusicLocation);
+}
+
+pub(crate) type SnapshotKey = MD5;
+
+#[derive(Default, Deserialize, Serialize)]
+struct SnapshotInfo {
+    latest_key: Option<SnapshotKey>,
+    time: u128,
+    saved_keys: HashSet<SnapshotKey>,
+    clients: HashMap<ClientId, SnapshotKey>,
+}
+
+impl SnapshotInfo {
+    /// Update `time` & `latest_key` anyhow, and then returns whether the key was newly inserted.
+    ///
+    /// # Arguments
+    ///
+    /// * `key`: the new snapshot key
+    fn try_insert_key(&mut self, key: SnapshotKey) -> bool {
+        self.time = now_ms();
+        self.latest_key = Some(key);
+        self.saved_keys.insert(key)
+    }
+
+    fn update(&mut self, client_id: &ClientId, key: SnapshotKey) {
+        self.clients.insert(client_id.clone(), key);
+    }
 }

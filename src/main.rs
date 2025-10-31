@@ -1,5 +1,6 @@
 use crate::auth::{auth_by_code, auth_by_key};
-use crate::data::{manager::DataType, ClientId, SnapshotKey, SERVER_ID_PREFIX, SERVER_INFO};
+use crate::data::manager::{DataType, SnapshotKey};
+use crate::data::{ClientId, SERVER_ID_PREFIX, SERVER_INFO};
 use crate::server::{socket::handle_socket, SERVER_CONTEXT};
 use axum::extract::State;
 use axum::{
