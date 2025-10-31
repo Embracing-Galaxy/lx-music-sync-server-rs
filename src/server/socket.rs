@@ -11,12 +11,12 @@ use dashmap::DashMap;
 use dto::{EnabledFeatures, Req, Resp};
 use futures_util::{stream::SplitSink, stream::SplitStream, SinkExt, StreamExt};
 use log::{info, trace, warn};
+use serde::Serialize;
 use serde_json::json;
 use std::fmt::Formatter;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use serde::Serialize;
 use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinSet;
 use tokio::time::interval;
@@ -24,12 +24,11 @@ use tokio::time::interval;
 mod dto;
 pub(crate) mod handler;
 
-#[derive(Clone)]
 pub(super) struct SocketContext {
-    sender: Arc<Mutex<Sender>>,
-    list_ready: Arc<AtomicBool>,
-    dislike_ready: Arc<AtomicBool>,
-    callbacks: Arc<DashMap<String, oneshot::Sender<Resp>>>,
+    sender: Mutex<Sender>,
+    list_ready: AtomicBool,
+    dislike_ready: AtomicBool,
+    callbacks: DashMap<String, oneshot::Sender<Resp>>,
     broadcaster: Broadcaster,
     pub(super) client_id: ClientId,
     pub(crate) username: Username,
@@ -46,10 +45,10 @@ impl SocketContext {
         username: Username,
     ) -> Self {
         Self {
-            sender: Arc::new(Mutex::new(sender)),
+            sender: Mutex::new(sender),
             list_ready: Default::default(),
             dislike_ready: Default::default(),
-            callbacks: Default::default(), // TODO A more efficient CallbackManager (make id usize & use vec)
+            callbacks: Default::default(),
             broadcaster,
             client_id: device_info.client_id.clone(),
             username,
@@ -112,7 +111,11 @@ impl SocketContext {
 
     pub(crate) async fn on_message_string(&self, msg: &[u8]) {
         let Ok(incoming_msg) = serde_json::from_slice::<IncomingMsg>(msg) else {
-            todo!("on err")
+            warn!(
+                "Received invalid message: {:?}",
+                String::from_utf8_lossy(msg)
+            );
+            return;
         };
 
         match incoming_msg {
@@ -149,12 +152,7 @@ impl SocketContext {
         }
     }
 
-    pub(crate) fn broadcast(
-        &self,
-        data_type: DataType,
-        data: serde_json::Value,
-        key: SnapshotKey,
-    ) {
+    pub(crate) fn broadcast(&self, data_type: DataType, data: serde_json::Value, key: SnapshotKey) {
         self.broadcaster
             .send((
                 self.client_id.clone(),
@@ -179,8 +177,8 @@ impl std::fmt::Debug for SocketContext {
 }
 
 async fn heartbeat(
-    context: SocketContext,
-    got_pong: Arc<AtomicBool>,
+    context: &'static SocketContext,
+    got_pong: &'static AtomicBool,
     is_mobile: bool,
     device_name: Arc<String>,
 ) {
@@ -202,7 +200,7 @@ async fn heartbeat(
     }
 }
 
-async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Arc<AtomicBool>) {
+async fn on_message(context: &SocketContext, mut receiver: Receiver, got_pong: &AtomicBool) {
     while let Some(Ok(msg)) = receiver.next().await {
         match msg {
             Message::Text(text) => {
@@ -221,7 +219,7 @@ async fn on_message(context: SocketContext, mut receiver: Receiver, got_pong: Ar
     }
 }
 
-async fn handle_broadcast(context: SocketContext, mut rx: Subscriber) {
+async fn handle_broadcast(context: &SocketContext, mut rx: Subscriber) {
     while let Ok((client_id, name, data, data_type, key)) = rx.recv().await {
         if context.client_id == client_id
             || !match data_type {
@@ -247,7 +245,7 @@ async fn handle_broadcast(context: SocketContext, mut rx: Subscriber) {
     }
 }
 
-async fn sync_once(context: SocketContext) {
+async fn sync_once(context: &SocketContext) {
     let callback = context
         .request(
             "getEnabledFeatures",
@@ -295,22 +293,19 @@ pub(crate) async fn handle_socket(
     let broadcast_rx = broadcaster.subscribe();
     let socket_context = SocketContext::new(sender, broadcaster, &device_info, username);
 
-    let flag = Arc::new(AtomicBool::new(true));
-    let context = socket_context.clone();
-    let got_pong = flag.clone();
+    let flag = AtomicBool::new(true);
+    let context = unsafe { std::mem::transmute(&socket_context) };
+    let got_pong = unsafe { std::mem::transmute(&flag) };
     let device_name_cloned = device_name.clone();
     let is_mobile = device_info.is_mobile;
     let mut tasks = JoinSet::new();
     tasks.spawn(heartbeat(context, got_pong, is_mobile, device_name_cloned));
 
-    let context = socket_context.clone();
-    let got_pong = flag.clone();
     let message_handle = tokio::spawn(on_message(context, receiver, got_pong));
 
-    let context = socket_context.clone();
     tasks.spawn(handle_broadcast(context, broadcast_rx));
 
-    tasks.spawn(sync_once(socket_context));
+    tasks.spawn(sync_once(context));
     tokio::select! {
         _ = message_handle => {},
         _ = close_rx => {},
