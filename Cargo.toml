@@ -22,12 +22,5 @@ futures-util = "0.3"
 tokio = { version = "1.47", features = ["fs", "macros", "rt-multi-thread", "time"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "http2", "ws"] }
 
-[dev-dependencies]
-criterion = "0.3"
-
-[[bench]]
-name = "benchmark"
-harness = false
-
 [lints.clippy]
 unused_async = "warn"
