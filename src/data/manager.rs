@@ -1,9 +1,9 @@
 use crate::data::{config::AddMusicLocation, ClientId};
 use crate::server::socket::handler::JsonReqHandler;
 use crate::utils::crypto::{md5_to_hex, to_md5, MD5};
-use crate::utils::{load_or_create, now_ms};
+use crate::utils::load_or_create;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
@@ -67,22 +67,19 @@ impl<DATA: Data + Send + Sync> DataManager<DATA> {
             .await
             .clients
             .get(client_id)
-            .cloned()
+            .copied()
     }
 
     async fn create_snapshot(&'static self, bytes: Vec<u8>) -> SnapshotKey {
         let key = to_md5(&bytes);
-        if let Some(latest_key) = self.snapshot_info.read().await.latest_key
-            && latest_key == key
-        {
+        if self.snapshot_info.read().await.latest_key == Some(key) {
             return key;
         }
+        self.snapshot_info.write().await.latest_key = Some(key);
+        // async write snapshot content
+        let path = self.path.join(md5_to_hex(key));
+        tokio::spawn(tokio::fs::write(path, bytes));
 
-        if self.snapshot_info.write().await.try_insert_key(key) {
-            // async write snapshot content
-            let path = self.path.join(md5_to_hex(key));
-            tokio::spawn(tokio::fs::write(path, bytes));
-        };
         self.write_snapshot_info().await;
         key
     }
@@ -124,7 +121,12 @@ impl<DATA: Data + Send + Sync> DataManager<DATA> {
     }
 
     pub(crate) async fn update_snapshot_key(&'static self, client_id: &ClientId, key: SnapshotKey) {
-        self.snapshot_info.write().await.update(client_id, key);
+        let clients = &mut self.snapshot_info.write().await.clients;
+        if let Some(old_key) = clients.insert(client_id.clone(), key)
+            && !clients.values().any(|key| *key == old_key)
+        {
+            tokio::spawn(tokio::fs::remove_file(self.path.join(md5_to_hex(old_key))));
+        }
         self.write_snapshot_info().await;
     }
 
@@ -158,24 +160,7 @@ pub(crate) type SnapshotKey = MD5;
 #[derive(Default, Deserialize, Serialize)]
 struct SnapshotInfo {
     latest_key: Option<SnapshotKey>,
-    time: u128,
-    saved_keys: HashSet<SnapshotKey>,
     clients: HashMap<ClientId, SnapshotKey>,
 }
 
-impl SnapshotInfo {
-    /// Update `time` & `latest_key` anyhow, and then returns whether the key was newly inserted.
-    ///
-    /// # Arguments
-    ///
-    /// * `key`: the new snapshot key
-    fn try_insert_key(&mut self, key: SnapshotKey) -> bool {
-        self.time = now_ms();
-        self.latest_key = Some(key);
-        self.saved_keys.insert(key)
-    }
-
-    fn update(&mut self, client_id: &ClientId, key: SnapshotKey) {
-        self.clients.insert(client_id.clone(), key);
-    }
-}
+impl SnapshotInfo {}
