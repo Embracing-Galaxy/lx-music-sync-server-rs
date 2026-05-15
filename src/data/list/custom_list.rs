@@ -1,4 +1,4 @@
-use super::{de_list_id, music::MusicSource, se_list_id, MusicInfo};
+use super::{MusicInfo, de_list_id, music::MusicSource, se_list_id};
 use crate::data::config::AddMusicLocation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -81,7 +81,7 @@ fn combine_without_duplication(
         .cloned();
 
     match add_location {
-        AddMusicLocation::TOP => new.chain(base).collect(),
-        AddMusicLocation::BOTTOM => base.chain(new).collect(),
+        AddMusicLocation::Top => new.chain(base).collect(),
+        AddMusicLocation::Bottom => base.chain(new).collect(),
     }
 }

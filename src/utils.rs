@@ -1,4 +1,4 @@
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -12,11 +12,12 @@ pub fn now_ms() -> u128 {
 
 pub fn load_or_create<T: Default + DeserializeOwned + Serialize>(path: &Path) -> T {
     if path.exists() {
-        let bytes = fs::read(path).expect(format!("Failed to read {:?}", path).as_str());
-        serde_json::from_slice(&bytes).expect(format!("Failed to deserialize {:?}", path).as_str())
+        let bytes = fs::read(path).unwrap_or_else(|_| panic!("Failed to read {:?}", path));
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| panic!("Failed to deserialize {:?}", path))
     } else {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect(format!("Failed to create {:?}", parent).as_str());
+            fs::create_dir_all(parent).unwrap_or_else(|_| panic!("Failed to create {:?}", parent));
         }
         let default: T = T::default();
         let bytes = serde_json::to_vec_pretty(&default).expect("Failed to serialize default value");
@@ -75,8 +76,8 @@ impl<T: Eq + Hash> RwCounter<T> {
 
 // ----------------------------------------------------------------------------------
 
-use base64::prelude::{Engine, BASE64_STANDARD};
-use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use base64::prelude::{BASE64_STANDARD, Engine};
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use std::io::{Read, Write};
 
 pub fn gzip_base64(data: impl AsRef<[u8]>) -> String {
@@ -98,11 +99,11 @@ pub fn ungzip_base64(data: impl AsRef<[u8]>) -> Vec<u8> {
 }
 
 pub mod crypto {
-    use base64::prelude::{Engine, BASE64_STANDARD};
+    use base64::prelude::{BASE64_STANDARD, Engine};
     use openssl::{
-        hash::{hash, MessageDigest},
+        hash::{MessageDigest, hash},
         rsa::{Padding, Rsa},
-        symm::{decrypt, encrypt, Cipher},
+        symm::{Cipher, decrypt, encrypt},
     };
     use rand::RngExt;
 

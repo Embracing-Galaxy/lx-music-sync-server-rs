@@ -25,6 +25,6 @@ pub(crate) struct UserConfig {
 #[serde(rename_all = "lowercase")]
 pub(crate) enum AddMusicLocation {
     #[default]
-    TOP,
-    BOTTOM,
+    Top,
+    Bottom,
 }

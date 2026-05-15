@@ -1,14 +1,14 @@
 use crate::auth::{auth_by_code, auth_by_key};
 use crate::data::manager::{DataType, SnapshotKey};
 use crate::data::{ClientId, SERVER_ID_PREFIX, SERVER_INFO};
-use crate::server::{socket::handle_socket, SERVER_CONTEXT};
+use crate::server::{SERVER_CONTEXT, socket::handle_socket};
 use axum::extract::State;
 use axum::{
+    Router,
     extract::{ConnectInfo, Query, WebSocketUpgrade},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
-    Router,
 };
 use dashmap::DashMap;
 use log::info;

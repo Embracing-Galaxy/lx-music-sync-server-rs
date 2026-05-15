@@ -1,10 +1,10 @@
 use super::*;
 use crate::data::config::AddMusicLocation;
-use crate::data::list::{de_list_id, CustomListInfo, ListData, MusicInfo};
+use crate::data::list::{CustomListInfo, ListData, MusicInfo, de_list_id};
+use ListSyncAction::*;
+use log::debug;
 use serde::Deserializer;
 use std::collections::HashSet;
-use log::debug;
-use ListSyncAction::*;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case")]

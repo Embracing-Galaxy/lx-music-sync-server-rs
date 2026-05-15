@@ -1,8 +1,8 @@
-use crate::data::{config::AddMusicLocation, ClientId};
+use crate::data::{ClientId, config::AddMusicLocation};
 use crate::server::socket::handler::JsonReqHandler;
-use crate::utils::crypto::{md5_to_hex, to_md5, MD5};
+use crate::utils::crypto::{MD5, md5_to_hex, to_md5};
 use crate::utils::load_or_create;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::{Duration, Instant};

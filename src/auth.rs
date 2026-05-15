@@ -1,11 +1,11 @@
 use crate::data::config::CONFIG;
 use crate::data::user::UserSpace;
-use crate::data::{user::DeviceInfo, ClientId};
+use crate::data::{ClientId, user::DeviceInfo};
 use crate::server::SERVER_CONTEXT;
 use crate::utils::crypto::{
     aes_decrypt_with_base64, aes_encrypt_with_base64, md5_to_hex, rsa_encrypt_with_base64, to_md5,
 };
-use base64::prelude::{Engine, BASE64_STANDARD};
+use base64::prelude::{BASE64_STANDARD, Engine};
 use log::info;
 
 const AUTH_HEAD: &str = "lx-music auth::";
@@ -38,7 +38,7 @@ pub(crate) async fn auth_by_key(
 
 pub(crate) async fn auth_by_code(encrypt_msg: &str) -> Result<String, &'static str> {
     for (username, user_config) in CONFIG.user_configs.iter() {
-        let hex_key =&md5_to_hex(to_md5(&user_config.password))[..16];
+        let hex_key = &md5_to_hex(to_md5(&user_config.password))[..16];
         let key = BASE64_STANDARD.encode(hex_key.as_bytes());
         let text = aes_decrypt_with_base64(encrypt_msg, &key);
         if !text.starts_with(AUTH_HEAD) {

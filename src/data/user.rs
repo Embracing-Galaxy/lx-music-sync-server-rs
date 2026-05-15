@@ -1,4 +1,4 @@
-use crate::data::{dislike::DislikeData, list::ListData, manager::DataManager, ClientId, Username};
+use crate::data::{ClientId, Username, dislike::DislikeData, list::ListData, manager::DataManager};
 use crate::server::SERVER_CONTEXT;
 use crate::utils::{crypto::rand_16bytes_as_base64, load_or_create};
 use arc_swap::ArcSwap;

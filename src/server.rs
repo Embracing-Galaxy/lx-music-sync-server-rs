@@ -1,5 +1,5 @@
 use crate::data::config::CONFIG;
-use crate::data::user::{DevicesInfos, UserSpace, USERS_PATH};
+use crate::data::user::{DevicesInfos, USERS_PATH, UserSpace};
 use crate::data::{ClientId, Username};
 use crate::utils::RwCounter;
 use arc_swap::ArcSwap;

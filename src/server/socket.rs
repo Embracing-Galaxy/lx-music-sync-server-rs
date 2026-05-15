@@ -1,23 +1,23 @@
 use crate::data::manager::{DataType, SnapshotKey};
 use crate::server::socket::dto::IncomingMsg;
 use crate::{
-    data::{config::CONFIG, user::DeviceInfo, ClientId, Username}, server::SERVER_CONTEXT, utils::{gzip_base64, ungzip_base64},
-    Broadcaster,
-    ServerState,
-    Subscriber,
+    Broadcaster, ServerState, Subscriber,
+    data::{ClientId, Username, config::CONFIG, user::DeviceInfo},
+    server::SERVER_CONTEXT,
+    utils::{gzip_base64, ungzip_base64},
 };
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use dto::{EnabledFeatures, Req, Resp};
-use futures_util::{stream::SplitSink, stream::SplitStream, SinkExt, StreamExt};
+use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
 use log::{info, trace, warn};
 use serde::Serialize;
 use serde_json::json;
 use std::fmt::Formatter;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinSet;
 use tokio::time::interval;
 
@@ -269,7 +269,7 @@ async fn sync_once(context: &SocketContext) {
         .get(context.username)
         .unwrap()
         .add_music_location;
-    super::sync::sync_once(&context, user_space, add_location).await;
+    super::sync::sync_once(context, user_space, add_location).await;
     context.post("finished", vec![]).await;
 }
 

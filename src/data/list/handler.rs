@@ -126,7 +126,7 @@ impl ListSyncActionHandler for ListData {
 
     fn music_add(&mut self, list_id: u64, mut musics: Vec<MusicInfo>, add_type: AddMusicLocation) {
         if let Some(target_list) = self.get_music_list(list_id) {
-            if add_type == AddMusicLocation::TOP {
+            if add_type == AddMusicLocation::Top {
                 std::mem::swap(target_list, &mut musics);
             }
             target_list.extend(musics);

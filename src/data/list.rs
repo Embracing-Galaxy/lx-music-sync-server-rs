@@ -156,8 +156,8 @@ fn merge_vec(
         .cloned();
 
     match add_location {
-        AddMusicLocation::TOP => new.chain(current).collect(),
-        AddMusicLocation::BOTTOM => current.chain(new).collect(),
+        AddMusicLocation::Top => new.chain(current).collect(),
+        AddMusicLocation::Bottom => current.chain(new).collect(),
     }
 }
 
