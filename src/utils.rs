@@ -104,7 +104,7 @@ pub mod crypto {
         rsa::{Padding, Rsa},
         symm::{decrypt, encrypt, Cipher},
     };
-    use rand::Rng;
+    use rand::RngExt;
 
     pub type MD5 = u128;
 
