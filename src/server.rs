@@ -83,8 +83,8 @@ impl ServerContext {
             .get(self.device_username_map.load().get(client_id)?)
     }
 
-    pub(crate) fn record_auth_failed_ip(&self, ip: &String) {
-        self.auth_failed_ips.increase(ip.clone());
+    pub(crate) fn record_auth_failed_ip(&self, ip: &str) {
+        self.auth_failed_ips.increase(ip.to_owned());
     }
 
     pub(crate) fn start_daemon(&'static self) {

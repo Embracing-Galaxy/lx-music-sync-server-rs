@@ -28,5 +28,5 @@ pub(super) enum MusicSource {
     TX,
     WY,
     MG,
-    LOCAL,
+    Local,
 }

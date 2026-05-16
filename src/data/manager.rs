@@ -11,8 +11,8 @@ use tokio::time::sleep;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum DataType {
-    LIST,
-    DISLIKE,
+    List,
+    Dislike,
 }
 
 pub(crate) struct DataManager<DATA: Data + Send + Sync> {

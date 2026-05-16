@@ -129,13 +129,13 @@ impl SocketContext {
                     "onListSyncAction" => {
                         if self.list_ready.load(Ordering::Relaxed) {
                             let key = user.list.on_sync(data).await;
-                            self.broadcast(DataType::LIST, action, key);
+                            self.broadcast(DataType::List, action, key);
                         }
                     }
                     "onDislikeSyncAction" => {
                         if self.dislike_ready.load(Ordering::Relaxed) {
                             let key = user.dislike.on_sync(data).await;
-                            self.broadcast(DataType::DISLIKE, action, key);
+                            self.broadcast(DataType::Dislike, action, key);
                         }
                     }
                     _ => warn!("unsupported req: {req_name}"),
@@ -157,8 +157,8 @@ impl SocketContext {
             .send((
                 self.client_id.clone(),
                 match data_type {
-                    DataType::LIST => "onListSyncAction",
-                    DataType::DISLIKE => "onDislikeSyncAction",
+                    DataType::List => "onListSyncAction",
+                    DataType::Dislike => "onDislikeSyncAction",
                 },
                 data,
                 data_type,
@@ -223,8 +223,8 @@ async fn handle_broadcast(context: &SocketContext, mut rx: Subscriber) {
     while let Ok((client_id, name, data, data_type, key)) = rx.recv().await {
         if context.client_id == client_id
             || !match data_type {
-                DataType::LIST => context.list_ready.load(Ordering::Relaxed),
-                DataType::DISLIKE => context.dislike_ready.load(Ordering::Relaxed),
+                DataType::List => context.list_ready.load(Ordering::Relaxed),
+                DataType::Dislike => context.dislike_ready.load(Ordering::Relaxed),
             }
         {
             continue;
@@ -235,8 +235,8 @@ async fn handle_broadcast(context: &SocketContext, mut rx: Subscriber) {
         // already checked in main
         let user = SERVER_CONTEXT.get_user_space(context.username).unwrap();
         match data_type {
-            DataType::LIST => user.list.update_snapshot_key(&context.client_id, key).await,
-            DataType::DISLIKE => {
+            DataType::List => user.list.update_snapshot_key(&context.client_id, key).await,
+            DataType::Dislike => {
                 user.dislike
                     .update_snapshot_key(&context.client_id, key)
                     .await
@@ -294,8 +294,9 @@ pub(crate) async fn handle_socket(
     let socket_context = SocketContext::new(sender, broadcaster, &device_info, username);
 
     let flag = AtomicBool::new(true);
-    let context = unsafe { std::mem::transmute(&socket_context) };
-    let got_pong = unsafe { std::mem::transmute(&flag) };
+    let context =
+        unsafe { std::mem::transmute::<&SocketContext, &'static SocketContext>(&socket_context) };
+    let got_pong = unsafe { std::mem::transmute::<&AtomicBool, &'static AtomicBool>(&flag) };
     let device_name_cloned = device_name.clone();
     let is_mobile = device_info.is_mobile;
     let mut tasks = JoinSet::new();

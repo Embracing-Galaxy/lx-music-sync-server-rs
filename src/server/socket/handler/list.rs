@@ -6,6 +6,7 @@ use log::debug;
 use serde::Deserializer;
 use std::collections::HashSet;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Deserialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case")]
 pub(crate) enum ListSyncAction {

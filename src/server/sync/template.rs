@@ -42,7 +42,7 @@ macro_rules! sync_once_for {
             socket.post(concat!(stringify!($name), "_sync_set_list_data"), vec![data.clone()]).await;
         }
 
-        const TYPE: DataType = paste!(DataType::[<$name:upper>]);
+        const TYPE: DataType = paste!(DataType::[<$name:camel>]);
         #[inline]
         async fn broadcast(socket: &SocketContext, data: serde_json::Value, key: SnapshotKey) {
             let broadcast_data = serde_json::json!({

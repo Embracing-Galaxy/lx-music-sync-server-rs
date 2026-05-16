@@ -153,11 +153,12 @@ impl ListSyncActionHandler for ListData {
     fn music_update(&mut self, mut data: Vec<MusicUpdateInfo>) {
         if data.len() == 1 {
             let MusicUpdateInfo { id: list_id, music } = data.pop().unwrap();
-            if let Some(target_list) = self.get_music_list(list_id) {
-                target_list
+            if let Some(target_list) = self.get_music_list(list_id)
+                && let Some(info) = target_list
                     .iter_mut()
                     .find(|info| info.get_id() == music.get_id())
-                    .map(|info| *info = music);
+            {
+                *info = music;
             };
             return;
         }
