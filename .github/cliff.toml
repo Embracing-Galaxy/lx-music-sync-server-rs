@@ -31,23 +31,31 @@ body = """
 {% endfor -%}
 """
 
+footer = """
+Full Changelog: [{{ previous.version }}...{{ version }}](https://github.com/Embracing-Galaxy/lx-music-sync-server-rs/compare/{{ previous.version }}...{{ version }})
+"""
+
 [git]
 filter_unconventional = false
 skip_merges = true
 commit_parsers = [
-  { message = "^feat", group = "<!-- 0 -->✨ Features" },
-  { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
-  { message = "^docs", group = "<!-- 4 -->📚 Documentation" },
-  { message = "^perf", group = "<!-- 3 -->🚀 Performance" },
-  { message = "^refactor", group = "<!-- 2 -->🚜 Refactor" },
-  { message = "^test", group = "<!-- 6 -->🧪 Testing" },
-  { message = "^ci", group = "<!-- 7 -->⚙️ CI" },
-  { message = "^chore", group = "<!-- 8 -->🔧 Chore" },
-  { message = "^chore\\(deps\\)", group = "📦 Dependencies" },
-  { message = "^build", group = "🏗️ Build" },
-  { message = ".*", group = "💼 Other" },
+    { message = "^feat", group = "✨ Features" },
+    { message = "^fix", group = "🐛 Bug Fixes" },
+    { message = "^docs", group = "📚 Documentation" },
+    { message = "^perf", group = "🚀 Performance" },
+    { message = "^refactor", group = "🚜 Refactor" },
+    { message = "^test", group = "🧪 Testing" },
+    { message = "^ci", group = "⚙️ CI" },
+    { message = "^chore", group = "🔧 Chore" },
+    { message = "^chore\\(deps\\)", group = "📦 Dependencies" },
+    { message = "^build", group = "🏗️ Build" },
+    { message = ".*", group = "💼 Other" },
 ]
 
 [git.github]
 commits = true
 contributors = true
+
+[remote.github]
+owner = "Embracing-Galaxy"
+repo = "lx-music-sync-server-rs"
