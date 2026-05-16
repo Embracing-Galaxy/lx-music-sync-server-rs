@@ -22,9 +22,6 @@ futures-util = "0.3"
 tokio = { version = "1.47", features = ["fs", "macros", "rt-multi-thread", "time"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "http2", "ws"] }
 
-[lints.clippy]
-unused_async = "warn"
-
 [profile.release]
 codegen-units = 1
 lto = true
