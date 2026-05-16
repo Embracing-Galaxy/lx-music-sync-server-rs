@@ -1,0 +1,8 @@
+# Use mold linker for faster linking (CI builds).
+# Mold is a drop-in replacement for GNU ld/lld, available on both
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# musl targets: force using dynamic linking
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=-crt-static", "-C", "link-arg=-fuse-ld=mold"]

@@ -35,12 +35,12 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            setup: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+            setup: sudo apt-get update && sudo apt-get install -y mold libssl-dev pkg-config
 
           - target: x86_64-unknown-linux-musl
             container:
               image: rust:alpine
-            setup: apk add --no-cache openssl-dev musl-dev pkgconfig
+            setup: apk add --no-cache mold openssl-dev musl-dev pkgconfig
 
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
