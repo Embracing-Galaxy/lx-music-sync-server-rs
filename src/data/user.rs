@@ -12,7 +12,6 @@ pub(crate) static USERS_PATH: LazyLock<&Path> = LazyLock::new(|| Path::new("user
 pub(crate) struct UserSpace {
     user_data: UserData,
     pub(crate) list: DataManager<ListData>,
-    #[allow(unused)]
     pub(crate) dislike: DataManager<DislikeData>,
 }
 
