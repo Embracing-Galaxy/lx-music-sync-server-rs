@@ -66,11 +66,14 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      - name: Rename binary for artifact
+        run: cp target/release/lx-music-sync-server target/release/lx-music-sync-server-${{ matrix.target }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: lx-music-sync-server-${{ matrix.target }}
-          path: target/release/lx-music-sync-server
+          path: target/release/lx-music-sync-server-${{ matrix.target }}
           archive: false
 
   release:
