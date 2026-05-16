@@ -14,7 +14,7 @@ jobs:
     name: Generate changelog
     runs-on: ubuntu-latest
     outputs:
-      release_body: ${{ steps.git-cliff.outputs.content }}
+      release_body: ${{ steps.cliff.outputs.content }}
     steps:
       - uses: actions/checkout@v6
         with:
