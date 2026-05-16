@@ -24,3 +24,8 @@ axum = { version = "0.8", default-features = false, features = ["http1", "tokio"
 
 [lints.clippy]
 unused_async = "warn"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
