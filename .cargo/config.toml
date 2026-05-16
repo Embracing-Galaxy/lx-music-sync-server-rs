@@ -1,3 +1,6 @@
+[build]
+rustflags = ["-Zno-embed-metadata"]
+
 # Use mold linker for faster linking (CI builds).
 # Mold is a drop-in replacement for GNU ld/lld, available on both
 [target.x86_64-unknown-linux-gnu]
