@@ -10,6 +10,25 @@ permissions:
   contents: write
 
 jobs:
+  generate-changelog:
+    name: Generate changelog
+    runs-on: ubuntu-latest
+    outputs:
+      release_body: ${{ steps.git-cliff.outputs.content }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v4
+        id: cliff
+        with:
+          config: .github/cliff.toml
+          args: --latest --strip header
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+
   build:
     strategy:
       fail-fast: false
@@ -17,19 +36,17 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             setup: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-            release-dir: target/release
 
           - target: x86_64-unknown-linux-musl
             container:
               image: rust:alpine
             setup: apk add --no-cache openssl-dev musl-dev pkgconfig
-            release-dir: target/release
 
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
 
     env:
-      CARGO_HOME: ${{ github.workspace }}/.cargo
+      CARGO_HOME: ${{ github.workspace }}/.cargo #set for container
 
     steps:
       - uses: actions/checkout@v6
@@ -49,17 +66,29 @@ jobs:
       - name: Build
         run: cargo build --release
 
-      - name: Package
-        run: |
-          BIN="lx-music-sync-server"
-          strip "${{ matrix.release-dir }}/$BIN" 2>/dev/null || true
-          ASSET="${BIN}-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
-          tar czf "$ASSET" -C "${{ matrix.release-dir }}" "$BIN"
-          echo "ASSET=$ASSET" >> $GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: lx-music-sync-server-${{ matrix.target }}
+          path: target/release/lx-music-sync-server
+          archive: false
 
-      - name: Upload to Release
+  release:
+    needs: [ generate-changelog, build ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: lx-music-sync-server-*
+
+      - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
           draft: true
-          generate_release_notes: true
-          files: ${{ env.ASSET }}
+          body: ${{ needs.generate-changelog.outputs.release_body }}
+          prerelease: ${{ contains(github.ref_name, 'beta') }}
+          files: |
+            lx-music-sync-server-*

@@ -1,0 +1,53 @@
+[changelog]
+header = """
+# Changelog
+"""
+
+body = """
+{% macro print_commit(commit) -%}
+    - {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
+        {% if commit.breaking %}[**breaking**] {% endif %}\
+        {{ commit.message | split(pat="\n") | first | upper_first }} \
+        {% if commit.github.username %} @{{ commit.github.username }}{% else %} {{ commit.author.name }}{% endif %}
+        {%- if commit.footers -%}
+            {%- for footer in commit.footers -%}
+                {%- if footer.token == "Co-authored-by" -%}
+                    {%- set co_author_name = footer.value | split(pat=" <") | first | trim %} @{{ co_author_name }}
+                {%- endif -%}
+            {%- endfor -%}
+        {%- endif %}
+{% endmacro -%}
+
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits | filter(attribute="scope") | sort(attribute="scope") %}
+        {{ self::print_commit(commit=commit) }}
+    {%- endfor %}
+    {% for commit in commits %}
+        {%- if not commit.scope -%}
+            {{ self::print_commit(commit=commit) }}
+        {% endif -%}
+    {% endfor -%}
+{% endfor -%}
+"""
+
+[git]
+filter_unconventional = false
+skip_merges = true
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->✨ Features" },
+  { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
+  { message = "^docs", group = "<!-- 4 -->📚 Documentation" },
+  { message = "^perf", group = "<!-- 3 -->🚀 Performance" },
+  { message = "^refactor", group = "<!-- 2 -->🚜 Refactor" },
+  { message = "^test", group = "<!-- 6 -->🧪 Testing" },
+  { message = "^ci", group = "<!-- 7 -->⚙️ CI" },
+  { message = "^chore", group = "<!-- 8 -->🔧 Chore" },
+  { message = "^chore\\(deps\\)", group = "📦 Dependencies" },
+  { message = "^build", group = "🏗️ Build" },
+  { message = ".*", group = "💼 Other" },
+]
+
+[git.github]
+commits = true
+contributors = true
