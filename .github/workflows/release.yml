@@ -40,7 +40,7 @@ jobs:
           - target: x86_64-unknown-linux-musl
             container:
               image: rust:alpine
-            setup: apk add --no-cache mold openssl-dev musl-dev pkgconfig
+            setup: apk add --no-cache mold openssl-dev musl-dev pkgconfig && ln -sf /usr/bin/tar /bin/tar
 
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
