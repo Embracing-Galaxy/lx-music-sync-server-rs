@@ -32,7 +32,9 @@ body = """
 """
 
 footer = """
-Full Changelog: [{{ previous.version }}...{{ version }}](https://github.com/Embracing-Galaxy/lx-music-sync-server-rs/compare/{{ previous.version }}...{{ version }})
+{%- set base_url = "https://github.com/" ~ remote.github.owner ~ "/" ~ remote.github.repo -%}
+{%- set compare = previous.version ~ "..." ~ version -%}
+Full Changelog: [{{ compare }}]({{ base_url }}/compare/{{ compare }})
 """
 
 [git]
@@ -51,10 +53,6 @@ commit_parsers = [
     { message = "^build", group = "🏗️ Build" },
     { message = ".*", group = "💼 Other" },
 ]
-
-[git.github]
-commits = true
-contributors = true
 
 [remote.github]
 owner = "Embracing-Galaxy"
