@@ -30,17 +30,20 @@ pub fn load_or_create<T: Default + DeserializeOwned + Serialize>(path: &Path) ->
 
 use dashmap::{DashMap, Entry};
 use std::hash::Hash;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct RwCounter<T: Eq + Hash> {
-    map: DashMap<T, (usize, Instant)>,
+    map: DashMap<T, (usize, u128)>,
+    last_save_ms: AtomicU64,
 }
 
 impl<T: Eq + Hash> RwCounter<T> {
-    const TTL: Duration = Duration::from_secs(60 * 60 * 24 * 2); // 2 days
-    pub(crate) fn new() -> Self {
+    const TTL_MS: u128 = 60 * 60 * 24 * 2 * 1000; // 2 days in milliseconds
+
+    fn new() -> Self {
         Self {
             map: DashMap::new(),
+            last_save_ms: AtomicU64::new(0),
         }
     }
 
@@ -49,10 +52,10 @@ impl<T: Eq + Hash> RwCounter<T> {
             Entry::Occupied(mut e) => {
                 let (count, time) = e.get_mut();
                 *count += 1;
-                *time = Instant::now();
+                *time = now_ms();
             }
             Entry::Vacant(e) => {
-                e.insert((1, Instant::now()));
+                e.insert((1, now_ms()));
             }
         }
     }
@@ -65,12 +68,63 @@ impl<T: Eq + Hash> RwCounter<T> {
     }
 
     pub(crate) fn cleanup(&self) {
-        let now = Instant::now();
-        let Some(deadline) = now.checked_sub(Self::TTL) else {
-            // TODO "Make `last_used` persistent"
-            return; // The program did not run long enough
-        };
+        let deadline = now_ms().saturating_sub(Self::TTL_MS);
         self.map.retain(|_, (_, last_used)| *last_used >= deadline);
+    }
+}
+
+impl<T: Eq + Hash + Clone + Serialize> RwCounter<T> {
+    fn save_to(&self, path: &Path) {
+        let entries: Vec<(T, usize, u128)> = self
+            .map
+            .iter()
+            .map(|r| {
+                let (k, v) = r.pair();
+                (k.clone(), v.0, v.1)
+            })
+            .collect();
+        // TODO async serialize & IO
+        let bytes = serde_json::to_vec_pretty(&entries).expect("Failed to serialize RwCounter");
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).ok();
+        }
+        fs::write(path, bytes).expect("Failed to write RwCounter");
+        self.last_save_ms.store(now_ms() as u64, Ordering::Release);
+    }
+
+    pub(crate) fn try_save(&self, path: &Path) {
+        const DEBOUNCE_MS: u64 = 30_000; // 30 seconds
+        let now = now_ms() as u64;
+        let prev = self.last_save_ms.load(Ordering::Acquire);
+        // After a restart the first try_save always bypasses the debounce and
+        // writes immediately as `prev` equals to 0
+        if now.saturating_sub(prev) < DEBOUNCE_MS {
+            return; // Debounce: too soon since last save
+        }
+        // CAS: only one thread proceeds to save
+        if self
+            .last_save_ms
+            .compare_exchange(prev, now, Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
+            self.save_to(path);
+        }
+    }
+}
+
+impl<T: Eq + Hash + DeserializeOwned> RwCounter<T> {
+    pub(crate) fn load_from(path: &Path) -> Self {
+        let counter = Self::new();
+        if path.exists() {
+            let bytes = fs::read(path).unwrap_or_else(|_| panic!("Failed to read {:?}", path));
+            let entries: Vec<(T, usize, u128)> = serde_json::from_slice(&bytes)
+                .unwrap_or_else(|_| panic!("Failed to deserialize {:?}", path));
+            for (key, count, time) in entries {
+                counter.map.insert(key, (count, time));
+            }
+        }
+        // File missing = empty counter
+        counter
     }
 }
 

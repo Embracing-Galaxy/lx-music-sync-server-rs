@@ -5,6 +5,7 @@ use crate::utils::RwCounter;
 use arc_swap::ArcSwap;
 use axum::http::HeaderMap;
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::Arc;
 use std::{collections::HashMap, sync::LazyLock, time::Duration};
 use tokio::time::interval;
@@ -37,7 +38,7 @@ impl ServerContext {
             );
         }
         Self {
-            auth_failed_ips: RwCounter::new(),
+            auth_failed_ips: RwCounter::load_from(Path::new("blocked_ips.json")),
             device_username_map: ArcSwap::from_pointee(device_user_map),
             user_space_map,
         }
@@ -85,6 +86,7 @@ impl ServerContext {
 
     pub(crate) fn record_auth_failed_ip(&self, ip: &str) {
         self.auth_failed_ips.increase(ip.to_owned());
+        self.auth_failed_ips.try_save(Path::new("blocked_ips.json"));
     }
 
     pub(crate) fn start_daemon(&'static self) {
@@ -93,6 +95,7 @@ impl ServerContext {
             loop {
                 clean_expired_ip_record.tick().await;
                 self.auth_failed_ips.cleanup();
+                self.auth_failed_ips.try_save(Path::new("blocked_ips.json"));
             }
         });
     }
