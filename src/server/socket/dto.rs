@@ -49,8 +49,11 @@ impl Resp {
             panic!("client response with err: {err}");
         }
         self.data.map(|data| {
-            T::deserialize(data).unwrap_or_else(|_| {
-                panic!("Resp of type {} deserialization error", type_name::<T>())
+            T::deserialize(&data).unwrap_or_else(|err| {
+                panic!(
+                    "Resp of type {} deserialization error: {err}, data: {data:#}",
+                    type_name::<T>()
+                )
             })
         })
     }
