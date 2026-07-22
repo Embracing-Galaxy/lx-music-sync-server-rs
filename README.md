@@ -68,3 +68,11 @@ working-dir/
         ├── list/            # Playlist snapshots
         └── dislike/         # Dislike list snapshots
 ```
+
+## Attribution
+
+This is an independent Rust reimplementation. The sync protocol and server
+design are derived from
+[lx-music-sync-server](https://github.com/lyswhut/lx-music-sync-server)
+by **lyswhut**, licensed under the Apache License 2.0. No source code
+from the original project is included here.
