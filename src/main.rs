@@ -23,6 +23,10 @@ struct Cli {
     /// Enable trace logging level (ignores RUST_LOG).
     #[arg(long)]
     trace: bool,
+
+    /// Port to listen on.
+    #[arg(long, default_value_t = 9527)]
+    port: u16,
 }
 
 #[tokio::main]
@@ -52,7 +56,7 @@ async fn main() -> std::io::Result<()> {
     // build the application router
     let app = routes::app().into_make_service_with_connect_info::<SocketAddr>();
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 9527));
+    let addr = SocketAddr::from(([127, 0, 0, 1], cli.port));
     let listener = TcpListener::bind(addr).await?;
     info!("Listening on {addr}.");
     axum::serve(listener, app).await?;

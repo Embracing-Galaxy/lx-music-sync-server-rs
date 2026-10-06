@@ -22,7 +22,7 @@ cargo build --release
 cargo run
 ```
 
-Server starts on `127.0.0.1:9527` by default.
+Server starts on `127.0.0.1:9527` by default. Use `--port` to listen on a different port.
 
 ### CLI
 
@@ -30,10 +30,11 @@ Server starts on `127.0.0.1:9527` by default.
 lx-music-sync-server [OPTIONS]
 
 Options:
-      --debug    Enable debug logging level (ignores RUST_LOG)
-      --trace    Enable trace logging level (ignores RUST_LOG)
-  -h, --help     Print help
-  -V, --version  Print version
+      --debug        Enable debug logging level (ignores RUST_LOG)
+      --trace        Enable trace logging level (ignores RUST_LOG)
+      --port <PORT>  Port to listen on [default: 9527]
+  -h, --help         Print help
+  -V, --version      Print version
 ```
 
 Without `--debug` or `--trace`, the log level is taken from `RUST_LOG` when set (falling back to `info`,
