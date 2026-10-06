@@ -24,6 +24,22 @@ cargo run
 
 Server starts on `127.0.0.1:9527` by default.
 
+### CLI
+
+```text
+lx-music-sync-server [OPTIONS]
+
+Options:
+      --debug    Enable debug logging level (ignores RUST_LOG)
+      --trace    Enable trace logging level (ignores RUST_LOG)
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+Without `--debug` or `--trace`, the log level is taken from `RUST_LOG` when set (falling back to `info`,
+or `debug` in debug builds). `--debug` forces the `debug` level and `--trace` forces the `trace` level
+; both ignore `RUST_LOG`. Protocol request logs use the `trace` level.
+
 ## Configuration
 
 Auto-creates `config.json` on first run. Add users under `user_configs`:
