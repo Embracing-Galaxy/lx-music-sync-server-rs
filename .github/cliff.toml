@@ -29,12 +29,13 @@ body = """
         {% endif -%}
     {% endfor -%}
 {% endfor -%}
-"""
+---
+{% set base_url = "https://github.com/" ~ remote.github.owner ~ "/" ~ remote.github.repo %}
+{% if version and previous and previous.version %}
+    {%- set compare = previous.version ~ "..." ~ version -%}
+    Full Changelog: [{{ compare }}]({{ base_url }}/compare/{{ compare }})
+{% endif -%}
 
-footer = """
-{%- set base_url = "https://github.com/" ~ remote.github.owner ~ "/" ~ remote.github.repo -%}
-{%- set compare = previous.version ~ "..." ~ version -%}
-Full Changelog: [{{ compare }}]({{ base_url }}/compare/{{ compare }})
 """
 
 [git]
